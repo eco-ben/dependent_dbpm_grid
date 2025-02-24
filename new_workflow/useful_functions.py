@@ -57,6 +57,13 @@ def extract_gfdl(file_path, mask, path_out, cross_dateline = False):
     #Loading and rechunking data
     da = xr.open_zarr(file_path)
 
+    #Fix time format if needed
+    try:
+        new_time = da.indexes['time'].to_datetimeindex()
+        da['time'] = new_time
+    except:
+        pass
+
     #Getting name of variable contained in dataset
     [var] = list(da.keys())
     da = da[var]
