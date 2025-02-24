@@ -11,8 +11,9 @@ library(ggplot2)
 # Loading DBPM climate inputs ---------------------------------------------
 # We will load climate inputs to merge with catch and effort data before saving
 # results
-forcing_folder <- file.path("/g/data/vf71/la6889/dbpm_inputs/east_antarctica",
-                            "monthly_weighted/1deg")
+fao_region <- 58
+forcing_folder <- file.path("/g/data/vf71/la6889/dbpm_inputs/east_antarctica/",
+                            "monthly_weighted/025deg")
 
 clim_forcing_file <- list.files(forcing_folder, pattern = "obsclim|spinup",
                                 full.names = T) |>
@@ -33,7 +34,7 @@ effort_data <- file.path("/g/data/vf71/fishmip_inputs/ISIMIP3a/DKRZ_EffortFiles"
   #Keep only columns with relevant information
   read_csv_arrow(col_select = c("Year", "fao_area", "NomActive")) |> 
   #Selecting data for area of interest - FAO 58
-  filter(fao_area == 58) |> 
+  filter(fao_area == fao_region) |> 
   # calculate sum of effort by area
   group_by(Year, fao_area) |> 
   summarise(total_nom_active = sum(NomActive, na.rm = T), 
@@ -53,7 +54,7 @@ catch_data <- file.path("/g/data/vf71/fishmip_inputs/ISIMIP3a/DKRZ_EffortFiles",
                         "catch-validation_isimip3a_histsoc_1850_2004.csv") |> 
   read_csv_arrow(col_select = c("Year", "fao_area", "Reported", "IUU")) |>
   #Selecting area of interest
-  filter(fao_area == 58) |> 
+  filter(fao_area == fao_region) |> 
   # catch is in tonnes. This was checked in "FishingEffort" project
   mutate(catch_tonnes = Reported+IUU) |> 
   group_by(Year, fao_area) |> 
@@ -73,8 +74,9 @@ DBPM_effort_catch_input <- effort_data |>
 
 #Saving summarised catch and effort data
 DBPM_effort_catch_input |> 
-  write_parquet(file.path(forcing_folder,
-                          "dbpm_effort-catch-inputs_fao-48.parquet"))
+  write_parquet(file.path(forcing_folder, 
+                          paste0("dbpm_effort-catch-inputs_fao-",
+                                 fao_region, ".parquet")))
 
 #Removing individual data frames
 rm(effort_data, catch_data)
@@ -96,7 +98,8 @@ forcing_file |>
   scale_x_continuous(expand = c(.01, 0), breaks = seq(1850, 2010, 20))+
   scale_y_continuous(expand = c(.02, 0))+
   theme_bw()+
-  labs(y = "Total nom active", title = "FAO Major Fishing Area # 58")+
+  labs(y = "Total nom active", 
+       title = paste0("FAO Major Fishing Area # ", fao_region))+
   theme(plot.title = element_text(size = 12, hjust = 0.5),
         axis.title.x = element_blank(), axis.title.y = element_text(size = 12),
         axis.text = element_text(size = 10), 
@@ -104,11 +107,13 @@ forcing_file |>
         panel.grid.minor = element_blank()) 
 
 #Saving result that matches previous work
-ggsave("new_workflow/outputs/effort_fao-58.pdf", device = "pdf", dpi = 300)
+ggsave(paste0("new_workflow/outputs/effort_fao-", fao_region, ".pdf"), 
+       device = "pdf", dpi = 300)
 
 
 ## Saving catch and effort, and inputs data -------------------------------
 forcing_file |> 
   write_parquet(file.path(forcing_folder, 
-                          "dbpm_clim-fish-inputs_fao-58_1841-2010.parquet"))
+                          paste0("dbpm_clim-fish-inputs_fao-", fao_region, 
+                                 "_1841-2010.parquet")))
 
