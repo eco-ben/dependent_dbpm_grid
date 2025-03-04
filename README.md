@@ -27,7 +27,7 @@ Plots created in this script can be used to visually inspect the fit of predicte
 - Script [`06_running_gridded_DBPM.ipynb`](new_features/new_workflow/06_running_gridded_DBPM.ipynb) uses inputs prepared in [step 5](new_features/new_workflow/05_setup_gridded_DBPM.ipynb) and runs the spatial DBPM. DBPM model outputs are stored for each timestep included in the input data.  
 
 ## Step 7. Calculating catches from gridded DBPM outputs 
-- Script[`07_calculating_catches_DBPM`](new_features/07_calculating_catches_DBPM.ipynb) calculates catches for benthic detritivores and pelagic predators from gridded DBPM outputs calculated in [step 6](new_features/new_workflow/06_running_gridded_DBPM.ipynb).
+- Script[`07_calculating_catches_DBPM`](new_features/07_calculating_catches_DBPM.ipynb) calculates catches for benthic detritivores and pelagic predators from gridded DBPM outputs calculated in [step 6](new_features/new_workflow/06_running_gridded_DBPM.ipynb). Catch data is summarised per decade and maps created for the last decade of the spinup and the modelled period (1950 and 2010). Mean yearly catches are calculated for the area of interest from monthly catch estimates to create a time series.
 
 ## Step 8. Plotting data
 - Script [`08_plotting_gridded_DBPM_outputs`](new_features/08_plotting_gridded_DBPM_outputs.ipynb) produces size spectrum plots based on gridded DBPM outputs produced in [step 6](new_features/new_workflow/06_running_gridded_DBPM.ipynb).
