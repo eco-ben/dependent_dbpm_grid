@@ -1103,3 +1103,28 @@ def gridded_sizemodel(base_folder, dbpm_fixed_inputs, dbpm_init_inputs,
         fn = f'detritivores_{model_res}_{region}_{pred_ts_next}.nc'
         detritivores = detritivores.transpose('time', 'size_class', 'lat', 'lon')
         detritivores.to_netcdf(os.path.join(out_folder, fn))
+
+
+# Calculate decadal catches ------
+def decadal_catches(catches_da, mask_da, **kwargs):
+    '''
+    Inputs:
+    - catches_da (data array) 3D data array containing total catches over time. 
+    - mask_da (data array) 2D data array used to mask out any areas outside the
+    region of interest. Areas outside boundaries must be identified with NaN.
+    **Optional**: 
+    - name (character) Name to be applied to decadal data array
+    - attrs (dictionary) Containing attributes to be added to data array
+
+    Output:
+    - dec_da (data array): Mean catches per decade
+    '''
+
+    catches_da['decade'] = (np.floor(catches_da.time.dt.year/10)*10).astype(int)
+    dec_da = catches_da.groupby('decade').mean()
+    dec_da = dec_da.where(np.isfinite(mask_da))
+    if 'name' in kwargs.keys():
+        dec_da.name = kwargs.get('name')
+    if 'attrs' in kwargs.keys():
+        dec_da = dec_da.assign_attrs(kwargs.get('attrs'))
+    return dec_da
