@@ -111,22 +111,6 @@ plotgridbyLME <- function(LMEnumber){
   
   totBiom <- grid_results$U + grid_results$V
   
-  # averaging per decade. First decade is 108 month then the rest is 120
-  decades <- biom_df |> 
-    distinct(t, decade)
-  uniq_dec <- unique(decades$decade)
-  
-  spectra_decade_avg <- array(NA, 
-                              dim = c(nrow(totBiom), ncol(totBiom), 
-                                      length(uniq_dec)),
-                              dimnames = list("grid_cell" = 1:nrow(totBiom),
-                                              "size" = grid_results$params$x,
-                                              "decade" = uniq_dec))
-  for(i in seq_along(uniq_dec)){
-    tempBiom <- totBiom[, , which(decades$decade == uniq_dec[i])]
-    avgBiom <- apply(tempBiom, 1:2, mean)
-    spectra_decade_avg[, , i] <- avgBiom
-  }
   
   # average per longitude
   uniq_coord <- biom_df |> 
@@ -226,80 +210,7 @@ plotgridbyLME <- function(LMEnumber){
     theme_bw()+
     theme(plot.title = element_text(hjust = 0.5))
 
-  ####### Maps of catches ---- 
-  catch_df <-  out |> 
-    select(lat, lon, t, year, TotalVcatch, TotalUcatch) |> 
-    mutate(totalC = TotalVcatch + TotalUcatch,
-           decade = (year %/% 10)*10)
-
-  # calculate the mean catch for each decade
-  catch_decade_avg <- catch_df |>
-    filter(decade >= 1950 & decade <= max(decade)) |> 
-    group_by(decade, lon, lat) |>
-    summarize(avg_Ucatch = mean(TotalUcatch),
-              avg_Vcatch = mean(TotalVcatch))
   
-  # plot map facets of average U catch per decade
-  p6 <- ggplot()+
-    geom_tile(data = catch_decade_avg, aes(lon, lat, fill = avg_Ucatch))+
-    geom_sf(data = world)+
-    coord_sf(xlim = lon_ext, ylim = lat_ext)+
-    scale_fill_gradient2(low = "white", high = "red", mid = "grey",
-                         name = paste0("Average catch in LME #", 
-                                       unique(out$region)))+
-    facet_wrap(~decade, nrow = 2)+
-    theme_bw()+
-    ggtitle("Mean U catches across decades")+
-    theme(legend.position = "bottom", axis.title = element_blank(),
-          axis.text.x = element_text(angle = 45, vjust = 0.75, hjust = 0.75), 
-          plot.title = element_text(hjust = 0.5), legend.title.position = "top")
-
-  # plot map facets of average V catch per decade
-  p7 <- ggplot()+
-    geom_tile(data = catch_decade_avg, aes(lon, lat, fill = avg_Vcatch))+
-    geom_sf(data = world)+
-    coord_sf(xlim = lon_ext, ylim = lat_ext)+
-    scale_fill_gradient2(low = "white", high = "red", mid = "grey",
-                         name = paste0("Average catch in LME #", 
-                                       unique(out$region)))+
-    facet_wrap(~decade, nrow = 2)+
-    theme_bw()+
-    ggtitle("Mean V catches across decades")+
-    theme(legend.position = "bottom", axis.title = element_blank(),
-          axis.text.x = element_text(angle = 45, vjust = 0.75, hjust = 0.75), 
-          plot.title = element_text(hjust = 0.5), legend.title.position = "top")
-    
-
-  ####### Catch trends ---- 
-  # U + V with empirical data
-  # calculate total catch across grid cells
-  catch_grid_avg <- catch_df |>
-    filter(year >= 1950) |> 
-    group_by(year) |>  
-    #WARNING weighted.mean here would be better 
-    summarize(avg_catch = mean(totalC)) 
-  # empirical data is in lme_input_init$catch_tonnes_area_m2,it's monthly, 
-  #convert to yearly
-
-  catch_empirical <- lme_input_init |> 
-    filter(year >= 1950) |>
-    group_by(year) |>  
-    summarize(empirical = mean(catch_tonnes_area_m2)) |> 
-    # CN WARNING this needs to be transformed in g m2 
-    mutate(empirical = empirical*1e06) 
-
-  catch_grid_avg <- catch_grid_avg |> 
-    full_join(catch_empirical)
-
-  p8 <- ggplot(catch_grid_avg)+
-    geom_line(aes(x = year, y = avg_catch))+
-    geom_point(aes(x = year, y = empirical))+
-    scale_x_continuous(breaks = uniq_dec[uniq_dec > min(catch_df$year)])+
-    ggtitle("Time series of catches versus empirical data (U+V)")+
-    theme_bw()+
-    ylab("Average catch")+
-    theme(axis.title.x = element_blank(),
-          plot.title = element_text(hjust = 0.5), legend.title.position = "top")
 
   ####### Save plots ---- 
   name <- ifelse(f.effort == FALSE, "plots_no_fishing.pdf", "plots_fishing.pdf")
