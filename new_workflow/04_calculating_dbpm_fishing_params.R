@@ -9,7 +9,7 @@ library(purrr)
 
 # Loading DBPM climate and fishing inputs ---------------------------------
 region_int <- "fao-58"
-base_folder <- "/g/data/vf71/la6889/dbpm_inputs/east_antarctica/"
+base_folder <- "/g/data/vf71/la6889/dbpm_inputs/east_antarctica"
 res <- "025deg"
 
 dbpm_inputs <- file.path(base_folder, "monthly_weighted", res,
@@ -161,3 +161,18 @@ gridded_params |>
                                            region_int, ".json")),
              digits = 10)
 
+
+# Running non-spatial DBPM and saving results
+non_spatial_run <- run_model(fishing_params, dbpm_inputs)
+
+# Defining folder to save non-spatial results
+dbpm_out_folder <- file.path(base_folder, "run_nonspatial", res)
+if(!dir.exists(dbpm_out_folder)){
+  dir.create(dbpm_out_folder, recursive = T)
+}
+
+non_spatial_run |> 
+  write_parquet(file.path(dbpm_out_folder, 
+                          paste0("dbpm_nonspatial_", res, "_", region_int, 
+                                 "_1841-2010.parquet")))
+  
