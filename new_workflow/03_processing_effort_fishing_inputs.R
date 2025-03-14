@@ -9,13 +9,25 @@ library(purrr)
 library(janitor)
 library(ggplot2)
 
+
+# Define base variables ---------------------------------------------------
+# FAO region number
+fao_region <- 58
+# Name of region
+name_region <- "east_antarctica"
+# Resolution
+res <- "025deg"
+
+#Creating path to ocean inputs
+forcing_folder <- file.path("/g/data/vf71/la6889/dbpm_inputs", name_region, 
+                            "monthly_weighted", res)
+
+# Parent folder containing fishing effort and catches
+fishing_folder <- "/g/data/vf71/fishmip_inputs/ISIMIP3a"
+
 # Loading DBPM climate inputs ---------------------------------------------
 # We will load climate inputs to merge with catch and effort data before saving
 # results
-fao_region <- 58
-forcing_folder <- file.path("/g/data/vf71/la6889/dbpm_inputs/east_antarctica",
-                            "monthly_weighted/025deg")
-
 clim_forcing_file <- list.files(forcing_folder, pattern = "obsclim|spinup",
                                 full.names = T) |>
   map(\(x) read_parquet(x)) |> 
@@ -30,7 +42,7 @@ depth_area <- clim_forcing_file |>
 
 
 ## Loading effort data ----------------------------------------------------
-effort_data <- file.path("/g/data/vf71/fishmip_inputs/ISIMIP3a/DKRZ_EffortFiles",
+effort_data <- file.path(fishing_folder, "DKRZ_EffortFiles",
                          "effort_isimip3a_histsoc_1841_2010.csv") |> 
   #Keep only columns with relevant information
   read_csv_arrow(col_select = c("Year", "fao_area", "NomActive")) |> 
@@ -53,8 +65,8 @@ effort_data <- file.path("/g/data/vf71/fishmip_inputs/ISIMIP3a/DKRZ_EffortFiles"
 
 # Loading catches data ----------------------------------------------------
 #From Watson et al 2018
-catch_watson <- file.path("/g/data/vf71/fishmip_inputs/ISIMIP3a/DKRZ_EffortFiles",
-                        "catch-validation_isimip3a_histsoc_1850_2004.csv") |> 
+catch_watson <- file.path(fishing_folder, "DKRZ_EffortFiles",
+                          "catch-validation_isimip3a_histsoc_1850_2004.csv") |> 
   read_csv_arrow(col_select = c("Year", "fao_area", "Reported", "IUU")) |>
   #Selecting area of interest
   filter(fao_area == fao_region) |> 
@@ -71,33 +83,63 @@ catch_watson <- file.path("/g/data/vf71/fishmip_inputs/ISIMIP3a/DKRZ_EffortFiles
          catch_tonnes_area_m2 = catch_tonnes/area_m2)
 
 #From Pauly et al 2020
-catch_pauly <- read.csv(
-  list.files("/g/data/vf71/fishmip_inputs/ISIMIP3a/SAU_catch_data", 
-             pattern = as.character(fao_region), full.names = T)) |> 
+catch_pauly <- read.csv(list.files(file.path(fishing_folder, "SAU_catch_data"), 
+                                   pattern = as.character(fao_region), 
+                                   full.names = T)) |> 
+  #Keep data up to 2010
   filter(year <= 2010) |> 
   group_by(year) |> 
-  summarise(catch_tonnes_pauly = sum(tonnes, na.rm = T)) |>
+  #Calculate total tonnes caught per year
+  summarise(catch_tonnes_pauly = sum(tonnes, na.rm = T)) 
+
+
+#From CCAMLR
+#Load catch data
+catch_ccamlr <- file.path(fishing_folder, 
+                          "CCAMLR_Statistical_Bulletin_V36/catch_and_effort",
+                          "Catch.csv") |> 
+  read_csv_arrow(col_select = c("year", "asd_code", 
+                                "greenweight_caught_tonne")) |> 
+  #Merge with codes for CCAMLR regions
+  left_join(read_csv_arrow(
+    file.path(fishing_folder, "CCAMLR_Statistical_Bulletin_V36",
+              "catch_and_effort/Area.csv")), by = "asd_code") |> 
+  #Keep only data for region and time period of interest
+  filter(asd_area_code == fao_region & year <= 2010) |> 
+  #Calculate total tonnes caught per year within boundaries of FAO region
+  #(including sub regions)
+  group_by(year) |> 
+  summarise(catch_tonnes_ccamlr = sum(greenweight_caught_tonne, na.rm = T)) |> 
+  full_join(catch_pauly, by = "year") |> 
+  arrange(year) |> 
+  mutate(area_m2 = depth_area$tot_area_m2) |>
+  mutate(catch_pauly = catch_tonnes_pauly/area_m2, 
+         .after = catch_tonnes_pauly) |> 
+  mutate(catch_ccamlr = catch_tonnes_ccamlr/area_m2, 
+         .after = catch_tonnes_ccamlr) |>
+  select(!area_m2) |> 
   full_join(catch_watson, by = "year") |> 
-  arrange(year) |>
-  mutate(area_m2 = case_when(is.na(area_m2) ~ mean(area_m2, na.rm = T), 
-                             T ~ area_m2)) |>
-  mutate(catch_pauly = catch_tonnes_pauly/area_m2) |> 
-  select(!c(region, depth, area_m2, catch_tonnes)) |>  
-  filter(!if_all(c(catch_tonnes_area_m2, catch_pauly), is.na)) |>  
+  select(!region:area_m2) |> 
+  arrange(year) |> 
+  filter(!if_all(c(catch_tonnes_area_m2, catch_pauly, catch_ccamlr), is.na)) |>  
   rowwise() |>
-  mutate(min_catch_density = min(catch_tonnes_area_m2, catch_pauly, na.rm = T),
+  mutate(min_catch_density = min(catch_tonnes_area_m2, catch_pauly, 
+                                 catch_ccamlr, na.rm = T),
          max_catch_density = max(catch_tonnes_area_m2, catch_pauly,
-                                 na.rm = T)) |> 
+                                 catch_ccamlr, na.rm = T)) |> 
   select(!catch_tonnes_area_m2)
 
 #Merge catches datasets
 catch_data <- catch_watson |>
-  full_join(catch_pauly, by = "year") |> 
+  full_join(catch_ccamlr, by = "year") |> 
   arrange(year) |> 
   relocate(catch_tonnes, .after = area_m2) |> 
-  mutate(across(c(area_m2, depth, region), ~mean(., na.rm = T)))
+  mutate(region = case_when(is.na(region) ~ fao_region, T ~ region), 
+         depth = case_when(is.na(depth) ~ depth_area$depth_m, T ~ depth),
+         area_m2 = case_when(is.na(area_m2) ~ depth_area$tot_area_m2, 
+                             T ~ area_m2))
 
-rm(catch_pauly, catch_watson)
+rm(catch_pauly, catch_watson, catch_ccamlr)
 
 # Merging catch and effort data -------------------------------------------
 DBPM_effort_catch_input <- effort_data |> 
