@@ -1267,8 +1267,7 @@ def tot_biomass_calc(gridded_params, dbpm_fixed_inputs, group, biomass_current,
 
 # Run model per grid cell or averaged over an area ------
 def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs, 
-                      dbpm_dynamic_inputs, region, model_res, out_folder, 
-                      ERSEM_det_input = False):
+                      dbpm_dynamic_inputs, region, model_res, out_folder):
     '''
     Inputs:
     - gridded_params (dictionary) Gridded DBPM parameters obtained in step 04.
@@ -1283,7 +1282,6 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     - model_res (character) Spatial resolution of DBPM inputs (as included in folder
     and file names)
     - out_folder (character) Full path to folder where DBPM outputs will be stored
-    - ERSEM_det_input (boolean) Default is False. ?????
 
     Outputs:
     - None. This function does not return any objects. Instead outputs are saved in
@@ -1371,18 +1369,12 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     # density in next timestep 
     # Increment values of detritus, predators & detritivores for next 
     # timestep
-    if not ERSEM_det_input:
-        det_pool = detritus_pool(gridded_params, dbpm_fixed_inputs, 
-                                 dbpm_init_inputs, dbpm_dynamic_inputs, 
-                                 defbypred, output_w)
+    det_pool = detritus_pool(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
+                             dbpm_dynamic_inputs, defbypred, output_w)
 
-        # Biomass density of detritus g.m-2
-        detritus = (dbpm_init_inputs['detritus']+det_pool['dW']*
-                    gridded_params['timesteps_years']).load()
-    else:
-        detritus = xr.zeros_like(dbpm_init_inputs['detritus'])
-        #Apply land mask
-        detritus = detritus.where(dbpm_fixed_inputs['mask']).load()
+    # Biomass density of detritus g.m-2
+    detritus = (dbpm_init_inputs['detritus']+det_pool['dW']*
+                gridded_params['timesteps_years']).load()
 
     # Updating timestamp (results for next time step)
     detritus['time'] = [dbpm_time]
