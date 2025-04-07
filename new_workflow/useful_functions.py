@@ -215,9 +215,6 @@ def GetPPIntSlope(file_paths, mmin = 10**(-14.25), mmid = 10**(-10.184),
     Outputs:
     - (Data array) - Depends on value of 'output' parameter. 
     '''
-        
-    #Load depth
-    depth = xr.open_zarr([f for f in file_paths if '_deptho_' in f][0])['deptho']
     
     #load large phytoplankton
     lphy = xr.open_zarr([f for f in file_paths if '_lphy_' in f][0])['lphy']
