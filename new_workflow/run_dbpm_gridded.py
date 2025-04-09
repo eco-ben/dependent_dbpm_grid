@@ -31,7 +31,7 @@ if __name__ == '__main__':
     ## Defining input and output folders ----
     base_folder = '/g/data/vf71/la6889/dbpm_inputs/weddell/'
     gridded_folder = os.path.join(base_folder, 'gridded_params', model_res)
-    out_folder = os.path.join(base_folder, 'test', model_res)
+    out_folder = os.path.join(base_folder, 'test_capped', model_res)
     #If output folder does not exist, it will create it
     os.makedirs(out_folder, exist_ok = True) 
 
@@ -55,27 +55,18 @@ if __name__ == '__main__':
     ds_fixed['size_bin_vals'] = 10**log10_size_bins_mat
     #Removing datarrays added to fixed inputs
     del depth, log10_size_bins_mat
-
-    # #Scatter fixed dataset across workers
-    # ds_fixed_scattered = client.scatter(ds_fixed)
-    # #Complete scattering before use ("dask future")
-    # ds_fixed_fut = ds_fixed_scattered.result()
-
     
     ## Loading predator, detritivores and detritus initialisation data ----
     if init_time is None:
         ds_init = uf.loading_dbpm_biomass_inputs(gridded_folder)
     else:
         ds_init = uf.loading_dbpm_biomass_inputs(out_folder, init_time)
-    # #Scatter initialisation dataset across workers
-    # ds_init_scattered = client.scatter(ds_init)
-    # #Complete scattering before use ("dask future")
-    # ds_init_fut = ds_init_scattered.result()
 
     ## Loading dynamic data ----
     gridded_esm = os.path.join(base_folder, 'gridded', model_res)
     ds_dynamic = uf.loading_dbpm_dynamic_inputs(gridded_esm, gridded_folder,
                                                 init_time = init_time)
+  
     if init_time is not None:
         init_yr = pd.Timestamp(init_time).year
         #Timestep from when to restart DBPM 
@@ -105,15 +96,13 @@ if __name__ == '__main__':
         effort = effort.sel(time = slice(effort_time, None))
         #Combine both data arrays
         effort = xr.concat([e_start, effort], dim = 'time')
-        effort = effort.chunk(ds_dynamic.chunks)
+        effort = effort.chunk({'lat': len(effort.lat), 
+                               'lon': len(effort.lon),
+                               'time': -1})
     
     #Creating a single dataset for all dynamic inputs
     ds_dynamic['effort'] = effort
     ds_dynamic = ds_dynamic.chunk({'time': 1})
-    # #Scatter initialisation dataset across workers
-    # ds_dynamic_scattered = client.scatter(ds_dynamic)
-    # #Complete scattering before use ("dask future")
-    # ds_dynamic_fut = ds_dynamic_scattered.result()
 
     #Gridded parameters
     gridded_params = json.load(open(
