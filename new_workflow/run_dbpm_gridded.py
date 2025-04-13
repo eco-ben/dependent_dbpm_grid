@@ -19,11 +19,6 @@ if __name__ == '__main__':
     #Start a cluster
     client = Client(threads_per_worker = 1)
 
-    #Do not print warning about large chunks
-    # dask.config.set({'array.slicing.split_large_chunks': False})
-    #Reduce size of chunks to 100 MB
-    #dask.config.set({'array.chunk-size': '100 MB'})
-
     ## Name of region and model resolution ----
     region = 'fao-48'
     model_res = '025deg'
@@ -31,14 +26,14 @@ if __name__ == '__main__':
     ## Defining input and output folders ----
     base_folder = '/g/data/vf71/la6889/dbpm_inputs/weddell/'
     gridded_folder = os.path.join(base_folder, 'gridded_params', model_res)
-    out_folder = os.path.join(base_folder, 'test_capped', model_res)
+    out_folder = os.path.join(base_folder, 'run_fishing', model_res)
     #If output folder does not exist, it will create it
     os.makedirs(out_folder, exist_ok = True) 
 
     ## If starting DBPM run from a specific time step ----
     # Character: Year and month from when DBPM initialisation values should be loaded
     # If starting model for the first time, it should be set to None
-    init_time = None
+    init_time = '2010-10'
     
     ## Loading fixed DBPM parameters ----
     ds_fixed = uf.loading_dbpm_fixed_inputs(gridded_folder)
@@ -112,7 +107,7 @@ if __name__ == '__main__':
     for t in range(0, len(ds_dynamic.time)):
         ds_dyn = ds_dynamic.isel(time = t)
         # Redistribute total effort across grid cells 
-        if ds_dynamic.time[t+1] <= ds_dynamic.time.max():
+        try:
             eff_short = uf.effort_calculation(ds_init['predators'], ds_init['detritivores'], 
                                               ds_dynamic['effort'].isel(time = t+1), 
                                               ds_fixed['depth'], 
@@ -128,11 +123,13 @@ if __name__ == '__main__':
                                             eff_short.values, ds_dynamic['effort'])
             #Remove variables not needed
             del dt_eff, fn
+        except:
+            dt = pd.to_datetime(ds_dyn.time.values).strftime('%Y-%m')
+            eff_short = xr.open_dataarray(glob(os.path.join(out_folder, f'effort*{dt}*'))[0])
+            ds_dynamic['effort'] = xr.where(ds_dynamic.time == ds_dynamic.time[t], 
+                                            eff_short.values, ds_dynamic['effort'])
         
         ds_init = uf.gridded_sizemodel(gridded_params, ds_fixed, ds_init, 
                                        ds_dyn, region = region, model_res = model_res, 
                                        out_folder = out_folder)
-
-    #Closing client
-    # client.close()
 
