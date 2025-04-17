@@ -48,7 +48,7 @@ You can also run these scripts in your own computer or a different server, but y
 2. [Join relevant NCI projects](https://access-hive.org.au/getting_started/first_steps/#join-relevant-nci-projects)
       * Request to join the following NCI projects:  
         * vf71 - for access to GFDL-MOM6-COBALT2 outputs in analysis ready data format 
-        * hh5 - for the Python conda environment   
+        * xp65 - for the Python conda environment   
       * Note that it can take a few business day get approved as a project member
 3. [Verify that you can log into NCI’s Gadi](https://access-hive.org.au/getting_started/first_steps/#login-to-gadi)  
       * Note that it usually takes more than 30 minutes for your account to be created  
