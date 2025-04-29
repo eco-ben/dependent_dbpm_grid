@@ -1,6 +1,6 @@
 
 # Loading libraries -------------------------------------------------------
-source("global_runs/useful_functions.R")
+source("scripts/useful_functions.R")
 library(dplyr)
 library(arrow)
 library(jsonlite)
