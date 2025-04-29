@@ -2,35 +2,35 @@
 This repository contains all code necessary to process inputs used by DBPM. This repository has been redesigned to use both Python and R as part of the model workflow. Following protocol ISIMIP3A, this simulation uses inputs from GFDL-MOM6-COBALT2 at two horizontal resolutions: $0.25^{\circ}$ (original) and $1^{\circ}$ (coarsen).  
   
 ## Step 1. Processing DBPM climate inputs at a global scale
-- Script [`01_processing_dbpm_global_inputs.ipynb`](new_workflow/01_processing_dbpm_global_inputs.ipynb) processes environmental data needed to force the DBPM model at a global scale. GFDL-MOM6-COBALT2 output files are transformed from `netCDF` to analysis ready `zarr` files. Files for `spinup` period are also created here.  
+- Script [`01_processing_dbpm_global_inputs.ipynb`](scripts/01_processing_dbpm_global_inputs.ipynb) processes environmental data needed to force the DBPM model at a global scale. GFDL-MOM6-COBALT2 output files are transformed from `netCDF` to analysis ready `zarr` files. Files for `spinup` period are also created here.  
   
 ## Step 2. Processing DBPM climate inputs at a regional scale
-- Script [`02_processing_dbpm_regional_inputs.ipynb`](new_features/new_workflow/02_processing_dbpm_regional_inputs.ipynb) uses `zarr` files produced in the previous step to extract data for an area of interest. In this notebook, we concentrate on the Southern Ocean, which was subdivided using three FAO Major Fishing Areas:
-    - [FAO Major Fishing Area 48: Atlantic, Antarctic](https://www.fao.org/fishery/en/area/fao:48/en) referred to here as Weddell,  
-    - [FAO Major Fishing Area 58: Indian Ocean, Antarctic And Southern](https://www.fao.org/fishery/en/area/fao:58/en) referred to here as East Antarctica,  
-    - [FAO Major Fishing Area 88: Pacific, Antarctic](https://www.fao.org/fishery/en/area/fao:88/en) referred to here as West Antarctica.  
+- Script [`02_processing_dbpm_regional_inputs.ipynb`](scripts/02_processing_dbpm_regional_inputs.ipynb) uses `zarr` files produced in the previous step to extract data for an area of interest. In this notebook, we use the FAO Major Fishing Areas to run DBPM in smaller chunks.
 
 ## Step 3. Processing DBPM fishing inputs at a regional scale
-- Script [`03_processing_effort_fishing_inputs.R`](new_features/new_workflow/03_processing_effort_fishing_inputs.R) processes fishing catch and effort data for the area of interest. It also creates a single file including fishing and climate data, which has all variables needed to run DBPM within the boundaries of the area of interest.
+- Script [`03_processing_effort_fishing_inputs.R`](scripts/03_processing_effort_fishing_inputs.R) processes fishing catch and effort data for all FAO regions. It creates a single file per region that includes fishing and climate data. This file has all variables needed to run DBPM within the boundaries of the FAO area.
 
 ## Step 4. Calculating fishing mortality parameters
-- Script [`04_calculating_dbpm_fishing_params.R`](new_features/new_workflow/04_calculating_dbpm_fishing_params.R) does the following:  
+- Script [`04_calculating_dbpm_fishing_params.R`](scripts/04_calculating_dbpm_fishing_params.R) does the following:  
     - Estimates fishing mortality parameters (catchability and selectivities for each functional group)  
     - Checks and adjusts the `search volume` parameter  
     - Creates and saves calibration plots in PDF format  
 Plots created in this script can be used to visually inspect the fit of predicted catches against observed (reconstructed) catch data.
 
 ## Step 5. Setting up gridded inputs for spatial DBPM
-- Script [`05_setup_gridded_DBPM.ipynb`](new_features/new_workflow/05_setup_gridded_DBPM.ipynb) processes all inputs necessary to run the spatial DBPM for the area and time period of interest.  
+- Script [`05_setup_gridded_DBPM.ipynb`](scripts/05_setup_gridded_DBPM.ipynb) processes all inputs necessary to run the spatial DBPM for each FAO area and time period of interest.  
 
 ## Step 6. Running DBPM spatial model  
-- Script [`06_running_gridded_DBPM.ipynb`](new_features/new_workflow/06_running_gridded_DBPM.ipynb) uses inputs prepared in [step 5](new_features/new_workflow/05_setup_gridded_DBPM.ipynb) and runs the spatial DBPM. DBPM model outputs are stored for each timestep included in the input data.  
+- Script [`06_running_gridded_DBPM.ipynb`](scripts/06_running_gridded_DBPM.ipynb) uses inputs prepared in [step 5](scripts/05_setup_gridded_DBPM.ipynb) and runs the spatial DBPM. DBPM model outputs are stored for each timestep included in the input data.  
 
-## Step 7. Calculating catches from gridded DBPM outputs 
-- Script[`07_calculating_catches_DBPM`](new_features/07_calculating_catches_DBPM.ipynb) calculates catches for benthic detritivores and pelagic predators from gridded DBPM outputs calculated in [step 6](new_features/new_workflow/06_running_gridded_DBPM.ipynb). Catch data is summarised per decade and maps created for the last decade of the spinup and the modelled period (1950 and 2010). Mean yearly catches are calculated for the area of interest from monthly catch estimates to create a time series.
+## Step 7. Merging DBPM outputs 
+DBPM produces output files for eight variables for each timestep modelled. Here we create outputs for every month in our modelling period (1841-2010), which results in over 10,000 files being saved. This script merges together monthly output files to create a yearly file per variable, significantly reducing the total number of files stored in memory and making it easier to load data into memory.
 
-## Step 8. Plotting data
-- Script [`08_plotting_gridded_DBPM_outputs`](new_features/08_plotting_gridded_DBPM_outputs.ipynb) produces size spectrum plots based on gridded DBPM outputs produced in [step 6](new_features/new_workflow/06_running_gridded_DBPM.ipynb).
+## Step 8. Calculating catches from gridded DBPM outputs 
+- Script[`07_calculating_catches_DBPM`](scripts/07_calculating_catches_DBPM.ipynb) calculates catches for benthic detritivores and pelagic predators from gridded DBPM outputs calculated in [step 6](scripts/06_running_gridded_DBPM.ipynb). Catch data is summarised per decade and maps created for the last decade of the spinup and the modelled period (1950 and 2010). Mean yearly catches are calculated for the area of interest from monthly catch estimates to create a time series.
+
+## Step 9. Plotting data
+- Script [`08_plotting_gridded_DBPM_outputs`](scripts/08_plotting_gridded_DBPM_outputs.ipynb) produces size spectrum plots based on gridded DBPM outputs produced in [step 6](scripts/06_running_gridded_DBPM.ipynb).
 
 ## Step x. xxxx
 Something
