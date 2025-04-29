@@ -217,10 +217,10 @@ def GetPPIntSlope(file_paths, mmin = 10**(-14.25), mmid = 10**(-10.184),
     '''
     
     #load large phytoplankton
-    lphy = xr.open_zarr([f for f in file_paths if '_lphy_' in f][0])['lphy']
+    lphy = xr.open_zarr([f for f in file_paths if '_lphy_' in f or '_lphy-capped' in f][0])['lphy']
     
     #Load small phytoplankton
-    sphy = xr.open_zarr([f for f in file_paths if '_sphy_' in f][0])['sphy']
+    sphy = xr.open_zarr([f for f in file_paths if '_sphy_' in f or '_sphy-capped' in f][0])['sphy']
     
     #Convert sphy and lphy from mol C / m^3 to g C / m^3
     sphy = sphy*12.0107
@@ -527,6 +527,10 @@ def loading_dbpm_fixed_inputs(base_folder):
     - dbpm_inputs (xarray Dataset) Contains fixed gridded inputs needed to run DBPM
     '''
     #Loading data from base folder
+    #Depth
+    depth = xr.open_zarr(glob(os.path.join(
+        base_folder, '*obsclim_deptho_*'))[0])['deptho']
+    
     #Preference benthic
     pref_benthos = xr.open_zarr(glob(
         os.path.join(base_folder, 
@@ -576,7 +580,8 @@ def loading_dbpm_fixed_inputs(base_folder):
         os.path.join(base_folder,
                      'senes-mort-det_*'))[0])['senes_mort_det']
 
-    dbpm_inputs = xr.Dataset(data_vars = {'pref_benthos': pref_benthos,
+    dbpm_inputs = xr.Dataset(data_vars = {'depth': depth,
+                                          'pref_benthos': pref_benthos,
                                           'pref_pelagic': pref_pelagic,
                                           'constant_growth': constant_growth,
                                           'constant_mortality': constant_mortality,
@@ -587,7 +592,8 @@ def loading_dbpm_fixed_inputs(base_folder):
                                           'other_mort_pred': other_mort_pred,
                                           'other_mort_det': other_mort_det,
                                           'senes_mort_pred': senes_mort_pred,
-                                          'senes_mort_det': senes_mort_det})
+                                          'senes_mort_det': senes_mort_det,
+                                          'mask': np.isfinite(depth)})
 
     return dbpm_inputs
 
@@ -629,13 +635,15 @@ def loading_dbpm_biomass_inputs(data_folder, init_time = None):
 
 
 # Loading initialising values for gridded DBPM biomass ------
-def loading_dbpm_dynamic_inputs(gridded_esm, gridded_calc, init_time = None):
+def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None,
+                                capped = False):
     '''
     Inputs:
-    - gridded_esm (character) Full path to folder where ocean model outputs are stored
-    - gridded_calc (character) Full path to folder where processed DBPM inputs are stored
+    - gridded_esm (character) Full path to folder where processed DBPM inputs are stored
     - init_time (character) Default is None. Year and month from when to restart gridded 
     DBPM runs. If set to None, DBPM is run from the beginning
+    - capped (boolean) Default is None. It indicates if "capped" inputs should be
+    used in the DBPM run.
 
     Outputs:
     - ds_dynamic (xarray Dataset) Contains dynamic gridded inputs needed to run DBPM
@@ -645,48 +653,54 @@ def loading_dbpm_dynamic_inputs(gridded_esm, gridded_calc, init_time = None):
         #Get year from initialising time 
         init_yr = pd.Timestamp(init_time).year
         #Timestep from when to restart DBPM 
-        subset_time = (pd.Timestamp(init_time)+pd.DateOffset(months = 1)).strftime('%Y-%m')
+        subset_time = (pd.Timestamp(init_time)+
+                       pd.DateOffset(months = 1)).strftime('%Y-%m')
+
+    if capped:
+        cap_search = '-capped'
+    else:
+        cap_search = ''
         
     if init_time is None or init_yr < 1959:
-        ui0 = xr.open_mfdataset(glob(os.path.join(gridded_calc, 'ui0_spinup*')), 
-                                engine = 'zarr')['ui0']
-        slope = xr.open_mfdataset(glob(os.path.join(gridded_esm, '*spinup_slope_*')), 
-                                  engine = 'zarr')['slope']
-        pel_tempeffect = xr.open_mfdataset(glob(
-            os.path.join(gridded_calc, 'pel-temp-eff_spinup*')), 
-                                           engine = 'zarr')['pel_temp_eff']
-        ben_tempeffect = xr.open_mfdataset(
-            glob(os.path.join(gridded_calc, 'ben-temp-eff_spinup*')), 
-            engine = 'zarr')['ben_temp_eff']
-        sinking_rate = xr.open_mfdataset(glob(os.path.join(gridded_esm, '*_spinup_er_*')),
-                                         engine = 'zarr')['export_ratio']
+        ui0_search = glob(os.path.join(gridded_folder, f'ui0{cap_search}_spinup*')) 
+        slope_search = glob(os.path.join(gridded_folder, 
+                                         f'*spinup_slope{cap_search}_*'))           
+        pel_temp_search = glob(os.path.join(gridded_folder, 'pel-temp-eff_spinup*'))
+        ben_temp_search = glob(os.path.join(gridded_folder, 'ben-temp-eff_spinup*'))
+        sinking_rate_search = glob(os.path.join(gridded_folder, 
+                                                f'*_spinup_er{cap_search}_*'))
+        effort_search = glob(os.path.join(gridded_folder, 'effort_spinup*'))
     #Spinup data plus obsclim are loaded if init_time is 1960
     elif init_yr >= 1959 and init_yr < 1961:
         exp = ['spinup', 'obsclim']
-        ui0 = xr.open_mfdataset(glob(os.path.join(gridded_calc, 'ui0_*')), 
-                                engine = 'zarr')['ui0']
-        slope = xr.open_mfdataset([f for ex in exp for f in glob(
-            os.path.join(base_folder, 'gridded', model_res, f'*{ex}_slope_*'))], 
-                                  engine = 'zarr')['slope']
-        pel_tempeffect = xr.open_mfdataset(glob(
-            os.path.join(gridded_calc, 'pel-temp-eff_*')), engine = 'zarr')['pel_temp_eff']
-        ben_tempeffect = xr.open_mfdataset(
-            glob(os.path.join(gridded_calc, 'ben-temp-eff_*')), 
-            engine = 'zarr')['ben_temp_eff']
-        sinking_rate = xr.open_mfdataset([f for ex in exp for f in glob(
-            os.path.join(base_folder, 'gridded', model_res, f'*{ex}_er_*'))], 
-                                         engine = 'zarr')['export_ratio']
+        ui0_search = glob(os.path.join(gridded_folder, f'ui0{cap_search}_*'))
+        slope_search = [f for ex in exp for f in glob(
+            os.path.join(gridded_folder, f'*{ex}_slope{cap_search}_*'))]
+        pel_temp_search = glob(os.path.join(gridded_folder, 'pel-temp-eff_*'))
+        ben_temp_search = glob(os.path.join(gridded_folder, 'ben-temp-eff_*'))
+        sinking_rate_search = [f for ex in exp for f in glob(
+            os.path.join(gridded_folder, f'*{ex}_er{cap_search}_*'))]
+        effort_search = glob(os.path.join(gridded_folder, 'effort_*'))
     else:
-        ui0 = xr.open_mfdataset(glob(os.path.join(gridded_calc, 'ui0_[0-9]*')),
-                                engine = 'zarr')['ui0']
-        slope = xr.open_mfdataset(glob(os.path.join(gridded_esm, '*obsclim_slope_*')),
-                                  engine = 'zarr')['slope']
-        pel_tempeffect = xr.open_mfdataset(glob(
-            os.path.join(gridded_calc, 'pel-temp-eff_[0-9]*')), engine = 'zarr')['pel_temp_eff']
-        ben_tempeffect = xr.open_mfdataset(glob(
-            os.path.join(gridded_calc, 'ben-temp-eff_[0-9]*')), engine = 'zarr')['ben_temp_eff']
-        sinking_rate = xr.open_mfdataset(glob(os.path.join(gridded_esm, '*_obsclim_er_*')),
-                                         engine = 'zarr')['export_ratio']
+        ui0_search = glob(os.path.join(gridded_folder, f'ui0{cap_search}_[0-9]*'))
+        slope_search = glob(os.path.join(gridded_folder, 
+                                         f'*obsclim_slope{cap_search}_*'))
+        pel_temp_search = glob(os.path.join(gridded_folder, 'pel-temp-eff_[0-9]*'))
+        ben_temp_search = glob(os.path.join(gridded_folder, 'ben-temp-eff_[0-9]*'))
+        sinking_rate_search = glob(os.path.join(gridded_folder, 
+                                                f'*_obsclim_er{cap_search}_*'))
+        effort_search = glob(os.path.join(gridded_folder, 'effort_[0-9]*'))
+        
+    #Load data
+    ui0 = xr.open_mfdataset(ui0_search, engine = 'zarr')['ui0']
+    slope = xr.open_mfdataset(slope_search, engine = 'zarr')['slope']
+    pel_tempeffect = xr.open_mfdataset(pel_temp_search, 
+                                       engine = 'zarr')['pel_temp_eff']
+    ben_tempeffect = xr.open_mfdataset(ben_temp_search, 
+                                       engine = 'zarr')['ben_temp_eff']
+    sinking_rate = xr.open_mfdataset(sinking_rate_search,
+                                     engine = 'zarr')['export_ratio']
+    effort = xr.open_mfdataset(effort_search, engine = 'zarr')['effort']
 
     #Subset data
     if init_time is not None:
@@ -696,11 +710,13 @@ def loading_dbpm_dynamic_inputs(gridded_esm, gridded_calc, init_time = None):
         pel_tempeffect = pel_tempeffect.sel(time = slice(subset_time, None))
         ben_tempeffect = ben_tempeffect.sel(time = slice(subset_time, None))
         sinking_rate = sinking_rate.sel(time = slice(subset_time, None))
+        effort = effort.sel(time = slice(subset_time, None))
 
     ds_dynamic = xr.Dataset(data_vars = {'ui0': ui0, 'slope': slope,
                                          'pel_tempeffect': pel_tempeffect,
                                          'ben_tempeffect': ben_tempeffect, 
-                                         'sinking_rate': sinking_rate})
+                                         'sinking_rate': sinking_rate,
+                                         'effort': effort})
 
     return ds_dynamic
 
@@ -1467,4 +1483,49 @@ def decadal_catches(catches_da, mask_da, **kwargs):
     if 'attrs' in kwargs.keys():
         dec_da = dec_da.assign_attrs(kwargs.get('attrs'))
     return dec_da
+
+
+# Merging DBPM gridded outputs (yearly or decadal) ----
+def merge_files(var, folder, merge_by = 'decade', **kwargs):
+    #Getting list of files in folder
+    file_list = sorted(glob(os.path.join(folder, f'{var}*')))
+
+    #Getting the base file name to save merged data
+    base_file = os.path.basename(file_list[-1])
+
+    #Get years if provided
+    if 'years' in kwargs:
+        yrs = kwargs.get('years')
+    else:
+        #Get year from file names
+        yrs = np.unique([int(re.findall('_(\\d{4})-\\d{2}', 
+                                        os.path.basename(f))[0]) for f in file_list])
     
+    #Merge by year or decade
+    if merge_by == 'decade':
+        dec = np.unique([np.floor(y/10).astype('int') for y in yrs])
+        for d in dec:
+            #Get files included in current decade
+            sub_list = [f for f in file_list if str(d) in f]
+            #Getting minimum and maximum years in the decade
+            ymax = max([y for y in yrs if str(d) in str(y)])
+            ymin = min([y for y in yrs if str(d) in str(y)])
+            #Create file name to save merged data
+            f_out = re.sub('\\d{4}-\\d{2}|\\d{4}', f'{str(ymin)}-{str(ymax)}', base_file)
+            #Open dataset
+            ds = xr.open_mfdataset(sub_list)
+            #Save dataset
+            ds.to_netcdf(os.path.join(folder, f_out))
+    if merge_by == 'year':
+        for y in yrs:
+            #Get files included in current decade
+            sub_list = [f for f in file_list if str(y) in f]
+            #Create file name to save merged data
+            f_out = re.sub('\\d{4}-\\d{2}|\\d{4}', f'{str(y)}', base_file)
+            #Open dataset
+            ds = xr.open_mfdataset(sub_list)
+            #Save dataset
+            ds.to_netcdf(os.path.join(folder, f_out))
+    else:
+        print('"merge_by" should be either "decade" or "year"')
+
