@@ -1420,6 +1420,9 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                                  pred_density, reprod_rate = reprod_pred['R_u'],
                                  growth_rate = growth_rates_pred_det['GG_u'], 
                                  total_mortality = mortality_pred['Z_u']).load()
+    #If values are negative, assign a value of 0
+    predators = xr.where(predators < 0, 0, predators)
+    
     # Saving predators biomass
     # Creating file name
     fn = f'predators_{model_res}_{region}_{pred_ts_next}.nc'
@@ -1448,6 +1451,9 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                                     reprod_rate = reprod_det['R_v'],
                                     growth_rate = growth_rates_pred_det['GG_v'], 
                                     total_mortality = mortality_det['Z_v']).load()
+    #If values are negative, assign a value of 0
+    detritivores = xr.where(detritivores < 0, 0, detritivores)
+    
     # Saving detritivores biomass
     fn = f'detritivores_{model_res}_{region}_{pred_ts_next}.nc'
     detritivores.to_netcdf(os.path.join(out_folder, fn))
