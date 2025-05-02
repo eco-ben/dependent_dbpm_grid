@@ -662,18 +662,17 @@ def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None,
         cap_search = ''
         
     if init_time is None or init_yr < 1841:
-        ui0 = xr.open_mfdataset(glob(os.path.join(
-            gridded_calc, f'ui0{cap_search}_stable-spin*')), engine = 'zarr')['ui0']
-        slope = xr.open_mfdataset(glob(os.path.join(
-            gridded_esm, f'*stable-spin_slope{cap_search}_*')), engine = 'zarr')['slope']
-        pel_tempeffect = xr.open_mfdataset(glob(
-            os.path.join(gridded_calc, 'pel-temp-eff_stable-spin*')), 
-                                           engine = 'zarr')['pel_temp_eff']
-        ben_tempeffect = xr.open_mfdataset(glob(os.path.join(
-            gridded_calc, 'ben-temp-eff_stable-spin*')), engine = 'zarr')['ben_temp_eff']
-        sinking_rate = xr.open_mfdataset(
-            glob(os.path.join(gridded_esm, f'*_stable-spin_er{cap_search}_*')),
-            engine = 'zarr')['export_ratio']
+        ui0_search = glob(os.path.join(
+            gridded_folder, f'ui0{cap_search}_stable-spin*'))
+        slope_search = glob(os.path.join(
+            gridded_folder, f'*stable-spin_slope{cap_search}_*'))
+        pel_temp_search = glob(os.path.join(
+            gridded_folder, 'pel-temp-eff_stable-spin*'))
+        ben_temp_search = glob(os.path.join(
+            gridded_folder, 'ben-temp-eff_stable-spin*'))
+        sinking_rate_search = glob(os.path.join(
+            gridded_folder, f'*_stable-spin_er{cap_search}_*'))
+        effort_search = glob(os.path.join(gridded_folder, 'effort_stable-spin*'))
     elif init_time >= 1841 or init_yr < 1959:
         ui0_search = glob(os.path.join(gridded_folder, f'ui0{cap_search}_spinup*')) 
         slope_search = glob(os.path.join(gridded_folder, 
