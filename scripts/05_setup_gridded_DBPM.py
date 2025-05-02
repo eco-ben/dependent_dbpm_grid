@@ -67,18 +67,27 @@ for reg in regions:
         #Loading depth
         depth = xr.open_zarr(glob(os.path.join(
             out_folder, '*obsclim_deptho_*'))[0])['deptho']
+        #Loading intercept data for stable spinup period
+        int_phy_zoo_stable_spin = xr.open_zarr(glob(os.path.join(
+            out_folder, '*stable-spin_intercept_*'))[0])['intercept']
         #Loading intercept data for spinup period
         int_phy_zoo_spinup = xr.open_zarr(glob(os.path.join(
             out_folder, '*spinup_intercept_*'))[0])['intercept']
         #Loading intercept data for model period 
         int_phy_zoo  = xr.open_zarr(glob(os.path.join(
             out_folder, '*obsclim_intercept_*'))[0])['intercept']
+        #Loading sea surface temperature data for stable spinup period
+        sea_surf_temp_stable_spin = xr.open_zarr(glob(os.path.join(
+            out_folder, '*stable-spin_tos_*'))[0])['tos']
         #Loading sea surface temperature data for spinup period
         sea_surf_temp_spinup = xr.open_zarr(glob(os.path.join(
             out_folder, '*spinup_tos_*'))[0])['tos']
         #Loading sea surface temperature data for model period
         sea_surf_temp  = xr.open_zarr(glob(os.path.join(
             out_folder, '*obsclim_tos_*'))[0])['tos']
+        #Loading bottom ocean temperature data for spinup period
+        sea_floor_temp_stable_spin = xr.open_zarr(glob(os.path.join(
+            out_folder, '*stable-spin_tob_*'))[0])['tob']
         #Loading bottom ocean temperature data for spinup period
         sea_floor_temp_spinup = xr.open_zarr(glob(os.path.join(
             out_folder, '*spinup_tob_*'))[0])['tob']
@@ -108,6 +117,23 @@ for reg in regions:
             log10_size_bins_mat = xr.open_dataarray(log10_file)
 
         # Fishing effort ----
+        effort_stable_spin = (xr.DataArray(
+            gridded_python['effort'][:len(int_phy_zoo_stable_spin.time)], 
+            dims = 'time', 
+            coords = {'time': int_phy_zoo_stable_spin.time}).
+                         expand_dims({'lat': depth.lat, 
+                                      'lon': depth.lon}).
+                         transpose('time', 'lat', 
+                                   'lon')).where(np.isfinite(depth))
+        effort_stable_spin.name = 'effort'
+        effort_out = effort_stable_spin.chunk({
+            'lon': len(effort_stable_spin.lon), 
+            'lat': len(effort_stable_spin.lat)})
+        effort_out.to_zarr(os.path.join(
+            out_folder, 
+        f'effort_stable-spin_{res_arc}_{reg}_monthly_1741_1840.zarr/'),
+                           consolidated = True, mode = 'w')
+        
         effort_spinup = (xr.DataArray(
             gridded_python['effort'][:len(int_phy_zoo_spinup.time)], 
             dims = 'time', 
@@ -200,6 +226,13 @@ for reg in regions:
                                 consolidated = True, mode = 'w')
 
         # Gridded intercept plankton spectrum
+        ui0_stable_spin = 10**int_phy_zoo_stable_spin
+        ui0_stable_spin.name = 'ui0'
+        ui0_stable_spin.to_zarr(os.path.join(
+            out_folder, 
+            f'ui0_stable-spin_{res_arc}_{reg}_monthly_1741_1840.zarr/'),
+                           consolidated = True, mode = 'w')
+        
         ui0_spinup = 10**int_phy_zoo_spinup
         ui0_spinup.name = 'ui0'
         ui0_spinup.to_zarr(os.path.join(
@@ -343,6 +376,18 @@ for reg in regions:
 
         # Temperature effects ----
         # Pelagics
+        pel_tempeffect_stable_spin = np.exp(
+            gridded_python['c1']-
+            gridded_python['activation_energy']/
+            (gridded_python['boltzmann']*(sea_surf_temp_stable_spin+273)))
+        pel_tempeffect_stable_spin.name = 'pel_temp_eff' 
+        pel_tempeffect_out = pel_tempeffect_stable_spin.chunk(
+            {'lat': 106, 'lon': 480})
+        pel_tempeffect_out.to_zarr(os.path.join(
+            out_folder, 
+            f'pel-temp-eff_stable-spin_{res_arc}_{reg}_monthly_1741_1840.zarr/'),
+            consolidated = True, mode = 'w')
+        
         pel_tempeffect_spinup = np.exp(
             gridded_python['c1']-
             gridded_python['activation_energy']/
@@ -368,6 +413,19 @@ for reg in regions:
             consolidated = True, mode = 'w')
 
         #Benthics
+        ben_tempeffect_stable_spin = np.exp(
+            gridded_python['c1']-
+            gridded_python['activation_energy']/
+            (gridded_python['boltzmann']*
+             (sea_floor_temp_stable_spin+273)))
+        ben_tempeffect_stable_spin.name = 'ben_temp_eff'
+        ben_tempeffect_out = ben_tempeffect_stable_spin.chunk(
+            {'lat': 106, 'lon': 480})
+        ben_tempeffect_out.to_zarr(os.path.join(
+            out_folder, 
+            f'ben-temp-eff_stable-spin_{res_arc}_{reg}_monthly_1741_1840.zarr/'),
+            consolidated = True, mode = 'w')
+        
         ben_tempeffect_spinup = np.exp(
             gridded_python['c1']-
             gridded_python['activation_energy']/
