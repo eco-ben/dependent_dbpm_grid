@@ -1292,7 +1292,8 @@ def tot_biomass_calc(gridded_params, dbpm_fixed_inputs, group, biomass_current,
 
 # Run model per grid cell or averaged over an area ------
 def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs, 
-                      dbpm_dynamic_inputs, region, model_res, out_folder):
+                      dbpm_dynamic_inputs, region, model_res, out_folder, 
+                      force_positive = True):
     '''
     Inputs:
     - gridded_params (dictionary) Gridded DBPM parameters obtained in step 04.
@@ -1432,8 +1433,10 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                                  pred_density, reprod_rate = reprod_pred['R_u'],
                                  growth_rate = growth_rates_pred_det['GG_u'], 
                                  total_mortality = mortality_pred['Z_u']).load()
+    
     #If values are negative, assign a value of 0
-    predators = xr.where(predators < 0, 0, predators)
+    if force_positive:
+        predators = xr.where(predators < 0, 0, predators)
     
     # Saving predators biomass
     # Creating file name
@@ -1463,8 +1466,9 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                                     reprod_rate = reprod_det['R_v'],
                                     growth_rate = growth_rates_pred_det['GG_v'], 
                                     total_mortality = mortality_det['Z_v']).load()
-    #If values are negative, assign a value of 0
-    detritivores = xr.where(detritivores < 0, 0, detritivores)
+    if force_positive:
+        #If values are negative, assign a value of 0
+        detritivores = xr.where(detritivores < 0, 0, detritivores)
     
     # Saving detritivores biomass
     fn = f'detritivores_{model_res}_{region}_{pred_ts_next}.nc'

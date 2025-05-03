@@ -19,13 +19,13 @@ if __name__ == '__main__':
     client = Client(threads_per_worker = 1)
     
     ## Name of region and model resolution ----
-    reg = 'fao-41'
+    reg = 'fao-47'
     res = '1deg'
 
     ## If starting DBPM run from a specific time step ----
     # Character: Year and month from when DBPM initialisation values should be loaded
     # If starting model for the first time, it should be set to None
-    init_time = '1841-03'
+    init_time = '1812-07'
 
     ## Defining input and output folders ----
     base_folder = '/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs'
@@ -114,5 +114,5 @@ if __name__ == '__main__':
         
         ds_init = uf.gridded_sizemodel(gridded_params, ds_fixed, ds_init, 
                                        ds_dyn, region = reg, model_res = res, 
-                                       out_folder = out_folder)
+                                       out_folder = out_folder, force_positive = True)
 
