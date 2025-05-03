@@ -673,7 +673,7 @@ def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None,
         sinking_rate_search = glob(os.path.join(
             gridded_folder, f'*_stable-spin_er{cap_search}_*'))
         effort_search = glob(os.path.join(gridded_folder, 'effort_stable-spin*'))
-    elif init_time >= 1841 or init_yr < 1959:
+    elif init_yr >= 1841 or init_yr < 1959:
         ui0_search = glob(os.path.join(gridded_folder, f'ui0{cap_search}_spinup*')) 
         slope_search = glob(os.path.join(gridded_folder, 
                                          f'*spinup_slope{cap_search}_*'))           
