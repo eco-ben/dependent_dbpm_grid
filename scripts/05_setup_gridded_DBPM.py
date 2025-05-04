@@ -98,6 +98,10 @@ for reg in regions:
         # Timestep to initialise biomass values
         time_init = [pd.Timestamp(int_phy_zoo_spinup.time[0].values)-
                      pd.DateOffset(months = 1)]
+
+        # Timesteps for stable spinup period
+        spinup_period = pd.date_range('1741-01-01', end = '1840-12-31', 
+                                      freq = 'MS')
         
         # Log10 size of individuals found in the model
         log10_file = os.path.join(base_folder, 
@@ -116,24 +120,7 @@ for reg in regions:
         else:
             log10_size_bins_mat = xr.open_dataarray(log10_file)
 
-        # Fishing effort ----
-        effort_stable_spin = (xr.DataArray(
-            gridded_python['effort'][:len(int_phy_zoo_stable_spin.time)], 
-            dims = 'time', 
-            coords = {'time': int_phy_zoo_stable_spin.time}).
-                         expand_dims({'lat': depth.lat, 
-                                      'lon': depth.lon}).
-                         transpose('time', 'lat', 
-                                   'lon')).where(np.isfinite(depth))
-        effort_stable_spin.name = 'effort'
-        effort_out = effort_stable_spin.chunk({
-            'lon': len(effort_stable_spin.lon), 
-            'lat': len(effort_stable_spin.lat)})
-        effort_out.to_zarr(os.path.join(
-            out_folder, 
-        f'effort_stable-spin_{res_arc}_{reg}_monthly_1741_1840.zarr/'),
-                           consolidated = True, mode = 'w')
-        
+        # Fishing effort ----       
         effort_spinup = (xr.DataArray(
             gridded_python['effort'][:len(int_phy_zoo_spinup.time)], 
             dims = 'time', 
@@ -151,6 +138,19 @@ for reg in regions:
         f'effort_spinup_{res_arc}_{reg}_monthly_1841_1960.zarr/'),
                            consolidated = True, mode = 'w')
 
+        da = (effort_out.sel(time = slice('1841-01', '1841-12')).
+              mean('time'))
+        effort_stable_spin = [da] * len(spinup_period)
+        effort_stable_spin = xr.concat(effort_stable_spin, dim = 'time')
+        effort_stable_spin['time'] = spinup_period
+        effort_out = effort_stable_spin.chunk({
+            'lon': len(effort_stable_spin.lon), 
+            'lat': len(effort_stable_spin.lat)})
+        effort_out.to_zarr(os.path.join(
+            out_folder, 
+        f'effort_stable-spin_{res_arc}_{reg}_monthly_1741_1840.zarr/'),
+                           consolidated = True, mode = 'w')
+        
         effort = (xr.DataArray(
             gridded_python['effort'][len(int_phy_zoo_spinup.time):],
             dims = 'time', coords = {'time': int_phy_zoo.time}).
