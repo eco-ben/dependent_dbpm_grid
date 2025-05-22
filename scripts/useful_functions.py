@@ -661,81 +661,41 @@ def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None,
     else:
         cap_search = ''
         
-    if init_time is None or init_yr < 1839:
-        ui0_search = glob(os.path.join(
-            gridded_folder, f'ui0{cap_search}_stable-spin*'))
-        slope_search = glob(os.path.join(
-            gridded_folder, f'*stable-spin_slope{cap_search}_*'))
-        pel_temp_search = glob(os.path.join(
-            gridded_folder, 'pel-temp-eff_stable-spin*'))
-        ben_temp_search = glob(os.path.join(
-            gridded_folder, 'ben-temp-eff_stable-spin*'))
-        sinking_rate_search = glob(os.path.join(
-            gridded_folder, f'*_stable-spin_er{cap_search}_*'))
-        effort_search = glob(os.path.join(gridded_folder, 'effort_stable-spin*'))
-    elif init_yr >= 1839 and init_yr < 1841:
-        ui0_search = glob(os.path.join(gridded_folder, f'ui0{cap_search}_*spin*')) 
-        slope_search = glob(os.path.join(gridded_folder, 
-                                         f'*spin*_slope{cap_search}_*'))           
-        pel_temp_search = glob(os.path.join(gridded_folder, 'pel-temp-eff_*spin*'))
-        ben_temp_search = glob(os.path.join(gridded_folder, 'ben-temp-eff_*spin*'))
-        sinking_rate_search = glob(os.path.join(gridded_folder, 
-                                                f'*_spin*_er{cap_search}_*'))
-        effort_search = glob(os.path.join(gridded_folder, 'effort_*spin*'))
-    elif init_yr >= 1841 and init_yr < 1959:
-        ui0_search = glob(os.path.join(gridded_folder, f'ui0{cap_search}_spinup*')) 
-        slope_search = glob(os.path.join(gridded_folder, 
-                                         f'*spinup_slope{cap_search}_*'))           
-        pel_temp_search = glob(os.path.join(gridded_folder, 'pel-temp-eff_spinup*'))
-        ben_temp_search = glob(os.path.join(gridded_folder, 'ben-temp-eff_spinup*'))
-        sinking_rate_search = glob(os.path.join(gridded_folder, 
-                                                f'*_spinup_er{cap_search}_*'))
-        effort_search = glob(os.path.join(gridded_folder, 'effort_spinup*'))
-    #Spinup data plus obsclim are loaded if init_time is 1960
-    elif init_yr >= 1959 and init_yr < 1961:
-        exp = ['spinup', 'obsclim']
-        ui0_search = [f for f in glob(
-            os.path.join(gridded_folder, f'ui0{cap_search}_*')
-        ) if 'stable-spin' not in f]
-        slope_search = [f for ex in exp for f in glob(
-            os.path.join(gridded_folder, f'*{ex}_slope{cap_search}_*'))]
-        pel_temp_search = [f for f in glob(
-            os.path.join(gridded_folder, 'pel-temp-eff_*')
-        ) if 'stable-spin' not in f]
-        ben_temp_search = [f for f in glob(
-            os.path.join(gridded_folder, 'ben-temp-eff_*')
-        ) if 'stable-spin' not in f]
-        sinking_rate_search = [f for ex in exp for f in glob(
-            os.path.join(gridded_folder, f'*{ex}_er{cap_search}_*'))]
-        effort_search = [f for f in glob(
-            os.path.join(gridded_folder, 'effort_*')
-        ) if 'stable-spin' not in f]
-    else:
-        ui0_search = glob(os.path.join(gridded_folder, f'ui0{cap_search}_[0-9]*'))
-        slope_search = glob(os.path.join(gridded_folder, 
-                                         f'*obsclim_slope{cap_search}_*'))
-        pel_temp_search = glob(os.path.join(gridded_folder, 'pel-temp-eff_[0-9]*'))
-        ben_temp_search = glob(os.path.join(gridded_folder, 'ben-temp-eff_[0-9]*'))
-        sinking_rate_search = glob(os.path.join(gridded_folder, 
-                                                f'*_obsclim_er{cap_search}_*'))
-        effort_search = glob(os.path.join(gridded_folder, 'effort_[0-9]*'))
-        
     #Load data
-    ui0 = xr.open_mfdataset(ui0_search, engine = 'zarr',
-                           parallel = True)['ui0']
-    slope = xr.open_mfdataset(slope_search, engine = 'zarr',
-                             parallel = True)['slope']
-    pel_tempeffect = xr.open_mfdataset(
-        pel_temp_search, engine = 'zarr', 
-        parallel = True)['pel_temp_eff']
-    ben_tempeffect = xr.open_mfdataset(
-        ben_temp_search, engine = 'zarr', 
-        parallel = True)['ben_temp_eff']
+    [ui0_search] = glob(os.path.join(gridded_folder, 
+                                   f'ui0{cap_search}_spinup_obsclim*'))
+    ui0 = xr.open_zarr(ui0_search, chunks = {'time': -1, 'lon': -1, 
+                                             'lat': -1})['ui0']
+
+    slope_search = [f for f in glob(
+        os.path.join(gridded_folder, f'*_slope{cap_search}_*')) 
+                    if 'ctrlclim' not in f]
+    slope = xr.open_mfdataset(
+        slope_search, engine = 'zarr', 
+        parallel = True)['slope'].chunk({'time': -1, 'lon': -1, 'lat': -1})
+    
+    [pel_temp_search] = glob(os.path.join(gridded_folder, 
+                                        'pel-temp-eff_spinup_obsclim*'))
+    pel_tempeffect = xr.open_zarr(
+        pel_temp_search, chunks = {'time': -1, 'lon': -1, 
+                                   'lat': -1})['pel_temp_eff']
+    
+    [ben_temp_search] = glob(os.path.join(gridded_folder, 
+                                        'ben-temp-eff_spinup_obsclim*'))
+    ben_tempeffect = xr.open_zarr(
+        ben_temp_search, chunks = {'time': -1, 'lon': -1, 
+                                   'lat': -1})['ben_temp_eff']
+
+    sinking_rate_search = [f for f in glob(
+        os.path.join(gridded_folder, f'*_er{cap_search}_*')) 
+                    if 'ctrlclim' not in f]
     sinking_rate = xr.open_mfdataset(
         sinking_rate_search, engine = 'zarr', 
-        parallel = True)['export_ratio']
-    effort = xr.open_mfdataset(
-        effort_search, engine = 'zarr', parallel = True)['effort']
+        parallel = True)['export_ratio'].chunk({'time': -1, 'lon': -1, 'lat': -1})
+
+    [effort_search] = glob(os.path.join(gridded_folder, 'effort_spinup_obsclim*'))
+    effort = xr.open_zarr(
+        effort_search, chunks = {'time': -1, 'lon': -1, 'lat': -1})['effort']
 
     #Subset data
     if init_time is not None:
@@ -1152,15 +1112,18 @@ def detritus_pool(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
    
    # Get burial rate from Dunne et al. 2007 equation 3
     burial = input_w*(0.013+0.53*input_w**2/(7+input_w)**2)
+    output_w = output_w+burial
     
     # Losses from detritivory + burial rate (not including 
     # remineralisation because that goes to p.p. after sediment, 
     # we are using realised p.p. as inputs to the model) 
-    dW = input_w-(output_w+burial)
+    dW = input_w-output_w
+    # dW = (np.exp(-output_w*gridded_params['timesteps_years'])+
+    #       (input_w/output_w)*
+    #       (1-np.exp(-output_w*gridded_params['timesteps_years'])))
    
     # Create dataset with changes in detritus biomass
     det_pool = xr.Dataset(data_vars = {'input_w': input_w, 
-                                       'burial': burial, 
                                        'dW': dW})
     #Reorganise dimensions
     det_pool = det_pool.transpose('time', 'lat', 'lon')
@@ -1424,6 +1387,7 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     # Biomass density of detritus g.m-2
     detritus = (dbpm_init_inputs['detritus']+det_pool['dW']*
                 gridded_params['timesteps_years']).load()
+    # detritus = (dbpm_init_inputs['detritus']*det_pool['dW']).load()
 
     # Updating timestamp (results for next time step)
     detritus['time'] = [dbpm_time]
