@@ -19,7 +19,7 @@ if __name__ == '__main__':
     client = Client(threads_per_worker = 1, memory_limit = 0)
     
     ## Name of region and model resolution ----
-    reg = 'fao-18'
+    reg = 'fao-21'
     res = '1deg'
 
     ## If starting DBPM run from a specific time step ----
@@ -80,8 +80,9 @@ if __name__ == '__main__':
     
     #Gridded parameters
     gridded_params = json.load(open(
-        glob(os.path.join(base_folder, reg, 'fishing_params', res, 
-                          'best_fish_vals', 'dbpm_gridded_*_python.json'))[0]))
+        os.path.join(base_folder, reg, 'fishing_params', res, 
+                     'best_fish_vals', 
+                     f'dbpm_gridded_size_params_{reg}_python.json')))
 
     ## Running spatial DBPM ----
     for t in range(0, len(ds_dynamic.time)):
