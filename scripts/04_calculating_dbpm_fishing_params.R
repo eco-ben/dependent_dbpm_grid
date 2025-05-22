@@ -104,7 +104,7 @@ for(res in resolutions){
   # Find the regions for which fishing parameters perform well
   good_params <- fish_param |> 
     group_by(region) |> 
-    # Lowest RMSE and correlation must be 0.5 or larger
+    # Lowest RMSE and correlation must be 0.5 or higher
     filter(rmse == min(rmse) & cor >= 0.5) |> 
     mutate(region = str_replace(str_to_lower(region), " ", "-")) |> 
     pull(region)
@@ -142,7 +142,8 @@ for(res in resolutions){
     params_calibration_optim <- params_calibration_optim |> 
       select(!region) |> 
       bind_cols(params_corr) |> 
-      filter(cor >= 0) |> 
+      select(!id) |> 
+      filter(catchNA == 0) |> 
       arrange(desc(cor), rmse) |> 
       relocate(region, .before = fmort_u)
     
@@ -153,14 +154,23 @@ for(res in resolutions){
         paste0("best-fishing-parameters_", f, 
                "_searchvol_estimated_numb-iter_", no_iter, ".parquet")))
     
+    #Identifying best performing parameters
+    good <- params_calibration_optim |> 
+      filter(rmse == min(rmse) & cor >= 0.5)
+    #If nothing is returned, select lowest RMSE
+    if(nrow(good) == 0){
+      good <- params_calibration |> 
+        filter(rmse == min(rmse))
+    }
+    
+    #Create calibration plot
+    corr_calib_plots(good, dbpm_inputs, results_folder)
+    
+    #Create plot with parameters that resulted in highest correlation
     params_calibration_optim |>
-      slice(1) |> 
+      filter(cor == max(corr)) |> 
       corr_calib_plots(dbpm_inputs, file.path(results_folder, "high_corr"))
     
-    params_calibration_optim |> 
-      arrange(rmse) |>
-      slice(1) |> 
-      corr_calib_plots(dbpm_inputs, results_folder)
   }
 }
 
