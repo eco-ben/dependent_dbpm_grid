@@ -21,7 +21,7 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
                       xmin_consumer_u = -7, xmin_consumer_v = -7, xmax = 6, 
                       tstepspryr = 48, Ngrid = NA, use_init = FALSE, 
                       pred_initial = NA, detritivore_initial = NA, 
-                      detrititus_initial = NA, equilibrium = FALSE,
+                      detritus_initial = NA, equilibrium = FALSE,
                       gridded = FALSE){
   
   #Inputs:
@@ -48,7 +48,7 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
   #   predators. If provided, 'use_init' must be set to TRUE
   # - detritivore_initial (numeric). Optional. Default is NA. Initialisation 
   #   value for detritivores. If provided, 'use_init' must be set to TRUE
-  # - detrititus_initial (numeric). Optional. Default is NA. Initialisation 
+  # - detritus_initial (numeric). Optional. Default is NA. Initialisation 
   #   value for detritus If provided, 'use_init' must be set to TRUE
   # - equilibrium (boolean). Default value is FALSE.
   # - gridded(boolean). Default value is FALSE. If set to TRUE, it will provide
@@ -247,7 +247,7 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
     #(V.init)
     param$init_detritivores <- detritivore_initial
     #(W.init)
-    param$init_detritus <- detrititus_initial
+    param$init_detritus <- detritus_initial
   }else{
     # arbitrary initial value for detritus (W.init)
     param$init_detritus <- 0.00001
@@ -644,13 +644,20 @@ sizemodel <- function(params, ERSEM_det_input = F, temp_effect = T,
         
         # get burial rate from Dunne et al. 2007 equation 3
         burial <- input_w*(0.013+0.53*input_w^2/(7+input_w)^2)
+        output_w <- output_w+burial
         
         # losses from detritivory + burial rate (not including remineralisation
         # bc that goes to p.p. after sediment, we are using realised p.p. as
         # inputs to the model) 
-        dW <- input_w-(output_w+burial) 
+        dW <- input_w-output_w
+        # dW <- (exp(-output_w*timesteps_years)+
+        #         (input_w/output_w)*
+        #         (1-exp(-output_w*timesteps_years)))
+        
+        
         #biomass density of detritus g.m-2
         detritus[i+1] <- detritus[i]+dW*timesteps_years
+        # detritus[i+1] <- detritus[i]*dW
       }
       if(ERSEM_det_input){
         detritus[i+1] <- detritus[i]
