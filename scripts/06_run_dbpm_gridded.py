@@ -19,13 +19,13 @@ if __name__ == '__main__':
     client = Client(threads_per_worker = 1, memory_limit = 0)
     
     ## Name of region and model resolution ----
-    reg = 'fao-47'
+    reg = 'fao-18'
     res = '1deg'
 
     ## If starting DBPM run from a specific time step ----
     # Character: Year and month from when DBPM initialisation values should be loaded
     # If starting model for the first time, it should be set to None
-    init_time = '1892-03'
+    init_time = None
 
     ## Defining input and output folders ----
     base_folder = '/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs'
@@ -60,7 +60,6 @@ if __name__ == '__main__':
                                                 capped = False)
   
     if init_time is not None:
-        init_yr = pd.Timestamp(init_time).year
         #Timestep from when to restart DBPM 
         subset_time = (pd.Timestamp(init_time)+
                        pd.DateOffset(months = 1)).strftime('%Y-%m')
@@ -74,11 +73,10 @@ if __name__ == '__main__':
         effort = ds_dynamic['effort'].sel(time = slice(effort_time, None))
         #Combine both data arrays
         effort = xr.concat([e_start, effort], dim = 'time')
-        effort = effort.chunk({'lat': len(effort.lat), 'lon': len(effort.lon),
-                               'time': -1})
+        effort = effort.chunk({'lat': -1, 'lon': -1, 'time': -1})
     
         #Creating a single dataset for all dynamic inputs
-        ds_dynamic['effort'] = effort
+        ds_dynamic['effort'] = effort.load()
     
     #Gridded parameters
     gridded_params = json.load(open(
