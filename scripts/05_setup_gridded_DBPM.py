@@ -56,7 +56,7 @@ for reg in regions:
         gridded_python['log10_ind_min_detritivore_size'] = log10_ind_min_detritivore_size
 
         #Saving Python-friendly gridded parameters
-        fout = os.path.basename(fish_param_file).replace(reg, f'reg_python')
+        fout = os.path.basename(fish_param_file).replace(reg, f'{reg}_python')
         #Save to disk
         with open(os.path.join(
             os.path.dirname(fish_param_file), fout), 
@@ -95,10 +95,6 @@ for reg in regions:
         sea_floor_temp  = xr.open_zarr(glob(os.path.join(
             out_folder, '*obsclim_tob_*'))[0])['tob']
 
-        # Timestep to initialise biomass values
-        time_init = [pd.Timestamp(int_phy_zoo_spinup.time[0].values)-
-                     pd.DateOffset(months = 1)]
-
         # Timesteps for stable spinup period
         spinup_period = pd.date_range('1741-01-01', end = '1840-12-31', 
                                       freq = 'MS')
@@ -129,40 +125,30 @@ for reg in regions:
                                       'lon': depth.lon}).
                          transpose('time', 'lat', 
                                    'lon')).where(np.isfinite(depth))
-        effort_spinup.name = 'effort'
-        effort_out = effort_spinup.chunk({
-            'lon': len(effort_spinup.lon), 
-            'lat': len(effort_spinup.lat)})
-        effort_out.to_zarr(os.path.join(
-            out_folder, 
-        f'effort_spinup_{res_arc}_{reg}_monthly_1841_1960.zarr/'),
-                           consolidated = True, mode = 'w')
 
-        da = (effort_out.sel(time = slice('1841-01', '1841-12')).
+        #Select first year of spinup data to create stable spinup dataset
+        da = (effort_spinup.sel(time = slice('1841-01', '1841-12')).
               mean('time'))
         effort_stable_spin = [da] * len(spinup_period)
         effort_stable_spin = xr.concat(effort_stable_spin, dim = 'time')
         effort_stable_spin['time'] = spinup_period
-        effort_out = effort_stable_spin.chunk({
-            'lon': len(effort_stable_spin.lon), 
-            'lat': len(effort_stable_spin.lat)})
-        effort_out.to_zarr(os.path.join(
-            out_folder, 
-        f'effort_stable-spin_{res_arc}_{reg}_monthly_1741_1840.zarr/'),
-                           consolidated = True, mode = 'w')
         
+        #Data fro modelling period
         effort = (xr.DataArray(
             gridded_python['effort'][len(int_phy_zoo_spinup.time):],
             dims = 'time', coords = {'time': int_phy_zoo.time}).
                   expand_dims({'lat': depth.lat, 'lon': depth.lon}).
                   transpose('time', 'lat',
                             'lon')).where(np.isfinite(depth))
-        effort.name = 'effort'
-        effort_out = effort.chunk({
-            'lon': len(effort.lon), 'lat': len(effort.lat)})
+        
+        # Create a single effort file
+        effort_out = xr.concat([effort_stable_spin, effort_spinup, effort],
+                               dim = 'time').chunk({'lon': -1, 'lat': -1,
+                                                    'time': -1}).load()
+        effort_out.name = 'effort'
         effort_out.to_zarr(os.path.join(
             out_folder, 
-            f'effort_{res_arc}_{reg}_monthly_1961_2010.zarr/'),
+            f'effort_spinup_obsclim_{res_arc}_{reg}_monthly_1741_2010.zarr/'),
                            consolidated = True, mode = 'w')
 
         # Habitat preferences ----
@@ -226,34 +212,27 @@ for reg in regions:
                                 consolidated = True, mode = 'w')
 
         # Gridded intercept plankton spectrum
-        ui0_stable_spin = 10**int_phy_zoo_stable_spin
-        ui0_stable_spin.name = 'ui0'
-        ui0_stable_spin.to_zarr(os.path.join(
+        ui0 = xr.concat([int_phy_zoo_stable_spin, int_phy_zoo_spinup,
+                         int_phy_zoo], 
+                        dim = 'time').chunk({'lon': -1, 'lat': -1,
+                                             'time': -1}).load()
+        ui0_out = 10**ui0
+        ui0_out.name = 'ui0'
+        ui0_out.to_zarr(os.path.join(
             out_folder, 
-            f'ui0_stable-spin_{res_arc}_{reg}_monthly_1741_1840.zarr/'),
-                           consolidated = True, mode = 'w')
-        
-        ui0_spinup = 10**int_phy_zoo_spinup
-        ui0_spinup.name = 'ui0'
-        ui0_spinup.to_zarr(os.path.join(
-            out_folder, 
-            f'ui0_spinup_{res_arc}_{reg}_monthly_1841_1960.zarr/'),
-                           consolidated = True, mode = 'w')
-
-        ui0 = 10**int_phy_zoo
-        ui0.name = 'ui0'
-        ui0.to_zarr(os.path.join(
-            out_folder, 
-            f'ui0_{res_arc}_{reg}_monthly_1961_2010.zarr/'),
+            f'ui0_spinup_obsclim_{res_arc}_{reg}_monthly_1741_2010.zarr/'),
                     consolidated = True, mode = 'w')
 
         # Initial biomass ----
+        # Timestep to initialise biomass values
+        time_init = (pd.Timestamp(ui0_out.time.min().values)-
+                     pd.DateOffset(months = 1))
         # Predators
         predators = (xr.DataArray(
             data = gridded_python['init_pred'], 
             dims = ['size_class'], 
             coords = {'size_class': log10_size_bins}).
-                     expand_dims({'time': time_init, 
+                     expand_dims({'time': [time_init], 
                                   'lat': depth.lat, 
                                   'lon': depth.lon}))
         #Applying spatial mask
@@ -261,7 +240,7 @@ for reg in regions:
         predators.name = 'predators'
         predators.to_zarr(os.path.join(
             out_folder, 
-            f'predators_{res_arc}_{reg}_init_1840.zarr/'),
+            f'predators_{res_arc}_{reg}_init_{time_init.year}.zarr/'),
                           consolidated = True, mode = 'w')
 
         # Detritivores
@@ -276,13 +255,13 @@ for reg in regions:
             (init_detritivores.size_class >= log10_ind_min_detritivore_size),
             init_detritivores, 0)
         # Adding time dimension
-        detritivores = detritivores.expand_dims({'time': time_init})
+        detritivores = detritivores.expand_dims({'time': [time_init]})
         #Applying spatial mask
         detritivores = detritivores.where(np.isfinite(depth))
         detritivores.name = 'detritivores'
         detritivores.to_zarr(os.path.join(
             out_folder, 
-            f'detritivores_{res_arc}_{reg}_init_1840.zarr/'),
+            f'detritivores_{res_arc}_{reg}_init_{time_init.year}.zarr/'),
                              consolidated = True, mode = 'w')
 
         # Initialising detritus
@@ -297,7 +276,7 @@ for reg in regions:
         detritus = detritus.where(np.isfinite(depth))
         detritus.name = 'detritus'
         detritus.to_zarr(os.path.join(
-            out_folder, f'detritus_{res_arc}_{reg}_init_1840.zarr/'),
+            out_folder, f'detritus_{res_arc}_{reg}_init_{time_init.year}.zarr/'),
                          consolidated = True, mode = 'w')
 
         # Other intrinsic natural mortality ----
@@ -376,79 +355,32 @@ for reg in regions:
 
         # Temperature effects ----
         # Pelagics
-        pel_tempeffect_stable_spin = np.exp(
-            gridded_python['c1']-
-            gridded_python['activation_energy']/
-            (gridded_python['boltzmann']*(sea_surf_temp_stable_spin+273)))
-        pel_tempeffect_stable_spin.name = 'pel_temp_eff' 
-        pel_tempeffect_out = pel_tempeffect_stable_spin.chunk(
-            {'lat': 106, 'lon': 480})
-        pel_tempeffect_out.to_zarr(os.path.join(
-            out_folder, 
-            f'pel-temp-eff_stable-spin_{res_arc}_{reg}_monthly_1741_1840.zarr/'),
-            consolidated = True, mode = 'w')
-        
-        pel_tempeffect_spinup = np.exp(
-            gridded_python['c1']-
-            gridded_python['activation_energy']/
-            (gridded_python['boltzmann']*(sea_surf_temp_spinup+273)))
-        pel_tempeffect_spinup.name = 'pel_temp_eff' 
-        pel_tempeffect_out = pel_tempeffect_spinup.chunk(
-            {'lat': 106, 'lon': 480})
-        pel_tempeffect_out.to_zarr(os.path.join(
-            out_folder, 
-            f'pel-temp-eff_spinup_{res_arc}_{reg}_monthly_1841_1960.zarr/'),
-            consolidated = True, mode = 'w')
-
+        sst = xr.concat([sea_surf_temp_stable_spin,
+                          sea_surf_temp_spinup, sea_surf_temp],
+                        dim = 'time')
         pel_tempeffect = np.exp(
-            gridded_python['c1']-
-            gridded_python['activation_energy']/
-            (gridded_python['boltzmann']*(sea_surf_temp+273)))
+            gridded_python['c1']-gridded_python['activation_energy']/
+            (gridded_python['boltzmann']*(sst+273)))
         pel_tempeffect.name = 'pel_temp_eff' 
-        pel_tempeffect_out = pel_tempeffect.chunk(
-            {'lat': 106, 'lon': 480})
+        pel_tempeffect_out = pel_tempeffect.chunk({'lon': -1, 'lat': -1,
+                                                   'time': -1}).load()
         pel_tempeffect_out.to_zarr(os.path.join(
             out_folder, 
-            f'pel-temp-eff_{res_arc}_{reg}_monthly_1961_2010.zarr/'),
+            f'pel-temp-eff_spinup_obsclim_{res_arc}_{reg}_monthly_1741_2010.zarr/'),
             consolidated = True, mode = 'w')
 
         #Benthics
-        ben_tempeffect_stable_spin = np.exp(
-            gridded_python['c1']-
-            gridded_python['activation_energy']/
-            (gridded_python['boltzmann']*
-             (sea_floor_temp_stable_spin+273)))
-        ben_tempeffect_stable_spin.name = 'ben_temp_eff'
-        ben_tempeffect_out = ben_tempeffect_stable_spin.chunk(
-            {'lat': 106, 'lon': 480})
-        ben_tempeffect_out.to_zarr(os.path.join(
-            out_folder, 
-            f'ben-temp-eff_stable-spin_{res_arc}_{reg}_monthly_1741_1840.zarr/'),
-            consolidated = True, mode = 'w')
-        
-        ben_tempeffect_spinup = np.exp(
-            gridded_python['c1']-
-            gridded_python['activation_energy']/
-            (gridded_python['boltzmann']*
-             (sea_floor_temp_spinup+273)))
-        ben_tempeffect_spinup.name = 'ben_temp_eff'
-        ben_tempeffect_out = ben_tempeffect_spinup.chunk(
-            {'lat': 106, 'lon': 480})
-        ben_tempeffect_out.to_zarr(os.path.join(
-            out_folder, 
-            f'ben-temp-eff_spinup_{res_arc}_{reg}_monthly_1841_1960.zarr/'),
-            consolidated = True, mode = 'w')
-
+        sbt = xr.concat([sea_floor_temp_stable_spin, sea_floor_temp_spinup,
+                         sea_floor_temp], dim = 'time')
         ben_tempeffect = np.exp(
-            gridded_python['c1']-
-            gridded_python['activation_energy']/
-            (gridded_python['boltzmann']*(sea_floor_temp+273)))
+            gridded_python['c1']-gridded_python['activation_energy']/
+            (gridded_python['boltzmann']*(sbt+273)))
         ben_tempeffect.name = 'ben_temp_eff'
-        ben_tempeffect_out = ben_tempeffect.chunk(
-            {'lat': 106, 'lon': 480})
+        ben_tempeffect_out = ben_tempeffect.chunk({'lon': -1, 'lat': -1,
+                                                   'time': -1}).load()
         ben_tempeffect_out.to_zarr(os.path.join(
             out_folder, 
-            f'ben-temp-eff_{res_arc}_{reg}_monthly_1961_2010.zarr/'),
+            f'ben-temp-eff_spinup_obsclim_{res_arc}_{reg}_monthly_1741_2010.zarr/'),
             consolidated = True, mode = 'w')
 
 
