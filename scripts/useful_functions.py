@@ -649,13 +649,6 @@ def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None,
     - ds_dynamic (xarray Dataset) Contains dynamic gridded inputs needed to run DBPM
     '''
 
-    if init_time is not None:
-        #Get year from initialising time 
-        init_yr = pd.Timestamp(init_time).year
-        #Timestep from when to restart DBPM 
-        subset_time = (pd.Timestamp(init_time)+
-                       pd.DateOffset(months = 1)).strftime('%Y-%m')
-
     if capped:
         cap_search = '-capped'
     else:
@@ -699,6 +692,10 @@ def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None,
 
     #Subset data
     if init_time is not None:
+        #Timestep from when to restart DBPM 
+        subset_time = (pd.Timestamp(init_time)+
+                       pd.DateOffset(months = 1)).strftime('%Y-%m')
+        
         #Subset data from timestep above until the end of the available data
         ui0 = ui0.sel(time = slice(subset_time, None))
         slope = slope.sel(time = slice(subset_time, None))
