@@ -19,7 +19,7 @@ if __name__ == '__main__':
     client = Client(threads_per_worker = 1, memory_limit = 0)
     
     ## Name of region and model resolution ----
-    reg = 'fao-21'
+    reg = 'fao-47'
     res = '1deg'
 
     ## If starting DBPM run from a specific time step ----
