@@ -1276,7 +1276,7 @@ def tot_biomass_calc(gridded_params, dbpm_fixed_inputs, group, biomass_current,
 # Run model per grid cell or averaged over an area ------
 def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs, 
                       dbpm_dynamic_inputs, region, model_res, out_folder, 
-                      force_positive = True):
+                      force_positive = True, weekly = False):
     '''
     Inputs:
     - gridded_params (dictionary) Gridded DBPM parameters obtained in step 04.
@@ -1299,11 +1299,17 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     
     # Storing date from dynamic dataset
     dbpm_time = dbpm_dynamic_inputs.time.values
-    pred_ts_next = pd.Timestamp(dbpm_time).strftime('%Y-%m')
+    if not weekly:
+        pred_ts_next = pd.Timestamp(dbpm_time).strftime('%Y-%m')
+    else:
+        pred_ts_next = pd.Timestamp(dbpm_time).strftime('%Y-%m-%d')
 
     # Storing date from initialising dataset
     [pred_time] = dbpm_init_inputs.time.values
-    pred_ts = pd.Timestamp(pred_time).strftime('%Y-%m')
+    if not weekly:
+        pred_ts = pd.Timestamp(pred_time).strftime('%Y-%m')
+    else:
+        pred_ts = pd.Timestamp(pred_time).strftime('%Y-%m-%d')
 
     # Feeding and satiation rates ----
     # Predators

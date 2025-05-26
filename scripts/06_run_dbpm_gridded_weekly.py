@@ -119,5 +119,6 @@ if __name__ == '__main__':
         
         ds_init = uf.gridded_sizemodel(gridded_params, ds_fixed, ds_init, 
                                        ds_dyn, region = reg, model_res = res, 
-                                       out_folder = out_folder, force_positive = True)
+                                       out_folder = out_folder, force_positive = True,
+                                       weekly = True)
 
