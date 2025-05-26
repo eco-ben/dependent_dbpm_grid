@@ -225,7 +225,7 @@ for(res in resolutions){
       filter(region == str_replace(str_to_upper(f), "-", " "))
     
     params <- sizeparam(dbpm_inputs, fish_param, xmin_consumer_u = -3, 
-                        xmin_consumer_v = -3, tstepspryr = 12)
+                        xmin_consumer_v = -3)#, tstepspryr = 12)
     
     # Saving non-spatial parameters
     params |> 
@@ -244,7 +244,7 @@ for(res in resolutions){
     detritus_initial <- mean(init_results$detritus)
     
     gridded_params <- sizeparam(dbpm_inputs, fish_param, xmin_consumer_u = -3, 
-                                xmin_consumer_v = -3, tstepspryr = 12, 
+                                xmin_consumer_v = -3, #tstepspryr = 12, 
                                 use_init = T, pred_initial = pred_initial, 
                                 detritivore_initial = detritivore_initial, 
                                 detritus_initial = detritus_initial,
