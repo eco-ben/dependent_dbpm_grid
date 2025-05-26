@@ -19,7 +19,8 @@ library(patchwork)
 # Getting DBPM model parameters ready -------------------------------------
 sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12, 
                       xmin_consumer_u = -7, xmin_consumer_v = -7, xmax = 6, 
-                      tstepspryr = 48, Ngrid = NA, use_init = FALSE, 
+                      # tstepspryr = 48,
+                      Ngrid = NA, use_init = FALSE, 
                       pred_initial = NA, detritivore_initial = NA, 
                       detritus_initial = NA, equilibrium = FALSE,
                       gridded = FALSE){
@@ -96,10 +97,17 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
   param$n_years <- length(unique(dbpm_inputs$year))
   
   # discretisation of year(delta.t)
-  param$timesteps_years <- (1/tstepspryr)
+  # param$timesteps_years <- (1/tstepspryr)
+  param$timesteps_years <- dbpm_inputs |> 
+    group_by(year) |> 
+    count() |> 
+    ungroup() |> 
+    summarise(ts = 1/mean(n)) |> 
+    pull(ts)
   
   # number of time bins (Neq)
-  param$numb_time_steps <- param$n_years*tstepspryr
+  # param$numb_time_steps <- param$n_years*tstepspryr
+  param$numb_time_steps <- nrow(dbpm_inputs)
   
   # get rescaled effort
   param$effort <- dbpm_inputs$nom_active_area_m2_relative
@@ -796,7 +804,7 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = T){
   # result_set (data frame) - ???
   
   params <- sizeparam(dbpm_inputs, fishing_params, xmin_consumer_u = -3, 
-                      xmin_consumer_v = -3, tstepspryr = 12)
+                      xmin_consumer_v = -3)#, tstepspryr = 12)
   
   # run model through time
   # TO DO IN SIZEMODEL CODE: make fishing function like one in model template
