@@ -5,7 +5,7 @@ This repository contains all code necessary to process inputs used by DBPM. This
 - Script [`01_processing_dbpm_global_inputs.ipynb`](scripts/01_processing_dbpm_global_inputs.ipynb) processes environmental data needed to force the DBPM model at a global scale. GFDL-MOM6-COBALT2 output files are transformed from `netCDF` to analysis ready `zarr` files. Files for `spinup` period are also created here.  
   
 ## Step 2. Processing DBPM climate inputs at a regional scale
-- Script [`02_processing_dbpm_regional_inputs.ipynb`](scripts/02_processing_dbpm_regional_inputs.ipynb) uses `zarr` files produced in the previous step to extract data for an area of interest. In this notebook, we use the FAO Major Fishing Areas to run DBPM in smaller chunks.
+- Script [`02_processing_dbpm_regional_inputs.py`](scripts/02_processing_dbpm_regional_inputs.py) uses `zarr` files produced in the previous step to extract data for an area of interest. In this notebook, we use the FAO Major Fishing Areas to run DBPM in smaller chunks.
 
 ## Step 3. Processing DBPM fishing inputs at a regional scale
 - Script [`03_processing_effort_fishing_inputs.R`](scripts/03_processing_effort_fishing_inputs.R) processes fishing catch and effort data for all FAO regions. It creates a single file per region that includes fishing and climate data. This file has all variables needed to run DBPM within the boundaries of the FAO area.
@@ -18,19 +18,19 @@ This repository contains all code necessary to process inputs used by DBPM. This
 Plots created in this script can be used to visually inspect the fit of predicted catches against observed (reconstructed) catch data.
 
 ## Step 5. Setting up gridded inputs for spatial DBPM
-- Script [`05_setup_gridded_DBPM.ipynb`](scripts/05_setup_gridded_DBPM.ipynb) processes all inputs necessary to run the spatial DBPM for each FAO area and time period of interest.  
+- Script [`05_setup_gridded_DBPM.py`](scripts/05_setup_gridded_DBPM.py) processes all inputs necessary to run the spatial DBPM for each FAO area and time period of interest.  
 
 ## Step 6. Running DBPM spatial model  
-- Script [`06_running_gridded_DBPM.ipynb`](scripts/06_running_gridded_DBPM.ipynb) uses inputs prepared in [step 5](scripts/05_setup_gridded_DBPM.ipynb) and runs the spatial DBPM. DBPM model outputs are stored for each timestep included in the input data.  
+- Script [`06_run_dbpm_gridded.py`](scripts/06_running_gridded_DBPM.py) uses inputs prepared in [step 5](scripts/05_setup_gridded_DBPM.py) and runs the spatial DBPM. DBPM model outputs are stored for each timestep included in the input data.  
 
 ## Step 7. Merging DBPM outputs 
 DBPM produces output files for eight variables for each timestep modelled. Here we create outputs for every month in our modelling period (1841-2010), which results in over 10,000 files being saved. This script merges together monthly output files to create a yearly file per variable, significantly reducing the total number of files stored in memory and making it easier to load data into memory.
 
 ## Step 8. Calculating catches from gridded DBPM outputs 
-- Script[`07_calculating_catches_DBPM`](scripts/07_calculating_catches_DBPM.ipynb) calculates catches for benthic detritivores and pelagic predators from gridded DBPM outputs calculated in [step 6](scripts/06_running_gridded_DBPM.ipynb). Catch data is summarised per decade and maps created for the last decade of the spinup and the modelled period (1950 and 2010). Mean yearly catches are calculated for the area of interest from monthly catch estimates to create a time series.
+- Script[`07_calculating_catches_DBPM`](scripts/07_calculating_catches_DBPM.py) calculates catches for benthic detritivores and pelagic predators from gridded DBPM outputs calculated in [step 6](scripts/06_running_gridded_DBPM.py). Catch data is summarised per decade and maps created for the last decade of the spinup and the modelled period (1950 and 2010). Mean yearly catches are calculated for the area of interest from monthly catch estimates to create a time series.
 
 ## Step 9. Plotting data
-- Script [`08_plotting_gridded_DBPM_outputs`](scripts/08_plotting_gridded_DBPM_outputs.ipynb) produces size spectrum plots based on gridded DBPM outputs produced in [step 6](scripts/06_running_gridded_DBPM.ipynb).
+- Script [`08_plotting_gridded_DBPM_outputs`](scripts/08_plotting_gridded_DBPM_outputs.ipynb) produces size spectrum plots based on gridded DBPM outputs produced in [step 6](scripts/06_running_gridded_DBPM.py).
 
 ## Step x. xxxx
 Something
