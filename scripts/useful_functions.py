@@ -635,13 +635,15 @@ def loading_dbpm_biomass_inputs(data_folder, init_time = None):
 
 
 # Loading initialising values for gridded DBPM biomass ------
-def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None,
+def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None, fishing = True,
                                 capped = False):
     '''
     Inputs:
     - gridded_esm (character) Full path to folder where processed DBPM inputs are stored
     - init_time (character) Default is None. Year and month from when to restart gridded 
     DBPM runs. If set to None, DBPM is run from the beginning
+    - fishing (boolean) Default is True. It indicates whether or not fishing effort 
+    should be included in the dynamic inputs dataset
     - capped (boolean) Default is None. It indicates if "capped" inputs should be
     used in the DBPM run.
 
@@ -686,9 +688,14 @@ def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None,
         sinking_rate_search, engine = 'zarr', 
         parallel = True)['export_ratio'].chunk({'time': -1, 'lon': -1, 'lat': -1})
 
-    [effort_search] = glob(os.path.join(gridded_folder, 'effort_spinup_obsclim*'))
-    effort = xr.open_zarr(
-        effort_search, chunks = {'time': -1, 'lon': -1, 'lat': -1})['effort']
+    if fishing:
+        [effort_search] = glob(os.path.join(gridded_folder, 'effort_spinup_obsclim*'))
+        effort = xr.open_zarr(
+            effort_search, chunks = {'time': -1, 'lon': -1, 'lat': -1})['effort']
+    else:
+        effort = xr.zeros_like(ui0)
+        effort = effort.where(np.isfinite(ui0))
+        effort.name = 'effort'
 
     #Subset data
     if init_time is not None:
@@ -1276,7 +1283,7 @@ def tot_biomass_calc(gridded_params, dbpm_fixed_inputs, group, biomass_current,
 # Run model per grid cell or averaged over an area ------
 def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs, 
                       dbpm_dynamic_inputs, region, model_res, out_folder, 
-                      force_positive = True):
+                      force_positive = True, weekly = False):
     '''
     Inputs:
     - gridded_params (dictionary) Gridded DBPM parameters obtained in step 04.
@@ -1299,11 +1306,17 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     
     # Storing date from dynamic dataset
     dbpm_time = dbpm_dynamic_inputs.time.values
-    pred_ts_next = pd.Timestamp(dbpm_time).strftime('%Y-%m')
+    if not weekly:
+        pred_ts_next = pd.Timestamp(dbpm_time).strftime('%Y-%m')
+    else:
+        pred_ts_next = pd.Timestamp(dbpm_time).strftime('%Y-%m-%d')
 
     # Storing date from initialising dataset
     [pred_time] = dbpm_init_inputs.time.values
-    pred_ts = pd.Timestamp(pred_time).strftime('%Y-%m')
+    if not weekly:
+        pred_ts = pd.Timestamp(pred_time).strftime('%Y-%m')
+    else:
+        pred_ts = pd.Timestamp(pred_time).strftime('%Y-%m-%d')
 
     # Feeding and satiation rates ----
     # Predators
