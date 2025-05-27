@@ -25,7 +25,7 @@ if __name__ == '__main__':
     ## If starting DBPM run from a specific time step ----
     # Character: Year and month from when DBPM initialisation values should be loaded
     # If starting model for the first time, it should be set to None
-    init_time = None
+    init_time = '1851-07-01'
 
     ## Defining input and output folders ----
     base_folder = '/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs'
@@ -65,12 +65,13 @@ if __name__ == '__main__':
                                    engine = 'zarr', parallel = True)
   
     if init_time is not None:
+        ds_dynamic = ds_dynamic.sel(time = slice(init_time, None))
         #Timestep from when to restart DBPM 
-        subset_time = (pd.Timestamp(init_time)+
-                       pd.DateOffset(months = 1)).strftime('%Y-%m')
+        subset_time = (pd.Timestamp(ds_dynamic.time.values[1]).
+                       strftime('%Y-%m-%d'))
         #Timestep from when to add init effort data
-        effort_time = (pd.Timestamp(init_time)+
-                       pd.DateOffset(months = 2)).strftime('%Y-%m')
+        effort_time = (pd.Timestamp(ds_dynamic.time.values[2]).
+                       strftime('%Y-%m-%d'))
         #Load effort for time step DBPM starts
         e_start = xr.open_dataarray(glob(os.path.join(
             out_folder, f'effort_*_{subset_time}.nc'))[0])
