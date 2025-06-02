@@ -797,7 +797,7 @@ sizemodel <- function(params, ERSEM_det_input = F, temp_effect = T,
 
 # Running model with time series ----
 run_model <- function(fishing_params, dbpm_inputs, withinput = T, 
-                      new_detritus_calc = F){
+                      new_detritus_calc){
   #Inputs:
   # fishing_params (list) - Fishing parameters produced by the `sizeparam` 
   # function
@@ -816,7 +816,7 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = T,
   
   # run model through time
   # TO DO IN SIZEMODEL CODE: make fishing function like one in model template
-  result_set <- sizemodel(params, new_detritus_calc)
+  result_set <- sizemodel(params, new_detritus_calc = new_detritus_calc)
   size_bins <- 10^params$log10_size_bins
   
   if(withinput){
@@ -861,7 +861,7 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = T,
 
 # Comparing observed and predicted fish biomass ----
 getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F, 
-                     figure_folder = NULL, new_detritus_calc = F){
+                     figure_folder = NULL, new_detritus_calc){
   #Inputs:
   # fishing_params (data frame) - Contains fishing parameters
   # dbpm_inputs (data frame) - Climate and fishing forcing data
@@ -889,7 +889,8 @@ getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F,
   region_name <- unique(dbpm_inputs$region)
   
   #Running model
-  result <- run_model(fishing_params, dbpm_inputs, new_detritus_calc)
+  result <- run_model(fishing_params, dbpm_inputs, 
+                      new_detritus_calc = new_detritus_calc)
   
   #Aggregate data by year (mean to conserve units)
   error_calc <- result |> 
@@ -1050,9 +1051,9 @@ LHSsearch <- function(num_iter = 1, search_volume = "estimated", seed = 1234,
   # parallelise using 75% of cores available using mclapply
   no_cores <- round((detectCores()*.75), 0)
   fishing_params$rmse <- mclapply(1:nrow(fishing_params), 
-                                  FUN = function(i) getError(fishing_params[i,],
-                                                             dbpm_inputs, 
-                                                             new_detritus_calc), 
+                                  FUN = function(i) 
+                                    getError(fishing_params[i,], dbpm_inputs, 
+                                             new_detritus_calc = new_detritus_calc), 
                                   mc.cores = no_cores) |> 
     unlist()
   
@@ -1096,8 +1097,8 @@ LHSsearch <- function(num_iter = 1, search_volume = "estimated", seed = 1234,
 
 
 # Correlation and calibration plots ----
-corr_calib_plots <- function(fishing_params, dbpm_inputs, 
-                             figure_folder = NULL){
+corr_calib_plots <- function(fishing_params, dbpm_inputs,
+                             figure_folder = NULL, new_detritus_calc){
   #Inputs:
   # fishing_params (named numeric vector) - Single column with named rows 
   # containing LHS parameters
@@ -1112,7 +1113,8 @@ corr_calib_plots <- function(fishing_params, dbpm_inputs,
   
   #Calculate correlations with tuned fishing parameters and save plots
   corr_nas <- getError(fishing_params, dbpm_inputs, year_int = 1950,
-                       corr = T, figure_folder)
+                       corr = T, figure_folder = figure_folder, 
+                       new_detritus_calc = new_detritus_calc)
   
   return(corr_nas)
 }
