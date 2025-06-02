@@ -336,7 +336,7 @@ gravitymodel <- function(effort, prop_b, depth, iter){
   
 # Run model per grid cell or averaged over an area ------
 sizemodel <- function(params, ERSEM_det_input = F, temp_effect = T,
-                      use_init = F){
+                      use_init = F, new_detritus_calc = F){
   with(params,{
     # Model for a dynamical ecosystem comprised of: two functionally distinct 
     # size spectra (predators and detritivores), size structured primary 
@@ -654,18 +654,25 @@ sizemodel <- function(params, ERSEM_det_input = F, temp_effect = T,
         burial <- input_w*(0.013+0.53*input_w^2/(7+input_w)^2)
         output_w <- output_w+burial
         
-        # losses from detritivory + burial rate (not including remineralisation
-        # bc that goes to p.p. after sediment, we are using realised p.p. as
-        # inputs to the model) 
-        dW <- input_w-output_w
-        # dW <- (exp(-output_w*timesteps_years)+
-        #         (input_w/output_w)*
-        #         (1-exp(-output_w*timesteps_years)))
-        
-        
-        #biomass density of detritus g.m-2
-        detritus[i+1] <- detritus[i]+dW*timesteps_years
-        # detritus[i+1] <- detritus[i]*dW
+        if(new_detritus_calc){
+          # losses from detritivory + burial rate (not including remineralisation
+          # bc that goes to p.p. after sediment, we are using realised p.p. as
+          # inputs to the model) 
+          dW <- (exp(-output_w*timesteps_years)+
+                  (input_w/output_w)*
+                  (1-exp(-output_w*timesteps_years)))
+          
+          #biomass density of detritus g.m-2
+          detritus[i+1] <- detritus[i]*dW
+        }else{
+          # losses from detritivory + burial rate (not including remineralisation
+          # bc that goes to p.p. after sediment, we are using realised p.p. as
+          # inputs to the model) 
+          dW <- input_w-output_w
+          
+          #biomass density of detritus g.m-2
+          detritus[i+1] <- detritus[i]+dW*timesteps_years
+        }
       }
       if(ERSEM_det_input){
         detritus[i+1] <- detritus[i]
@@ -789,7 +796,8 @@ sizemodel <- function(params, ERSEM_det_input = F, temp_effect = T,
 
 
 # Running model with time series ----
-run_model <- function(fishing_params, dbpm_inputs, withinput = T){
+run_model <- function(fishing_params, dbpm_inputs, withinput = T, 
+                      new_detritus_calc = F){
   #Inputs:
   # fishing_params (list) - Fishing parameters produced by the `sizeparam` 
   # function
@@ -808,7 +816,7 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = T){
   
   # run model through time
   # TO DO IN SIZEMODEL CODE: make fishing function like one in model template
-  result_set <- sizemodel(params)
+  result_set <- sizemodel(params, new_detritus_calc)
   size_bins <- 10^params$log10_size_bins
   
   if(withinput){
@@ -853,7 +861,7 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = T){
 
 # Comparing observed and predicted fish biomass ----
 getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F, 
-                     figure_folder = NULL){
+                     figure_folder = NULL, new_detritus_calc = F){
   #Inputs:
   # fishing_params (data frame) - Contains fishing parameters
   # dbpm_inputs (data frame) - Climate and fishing forcing data
@@ -881,7 +889,7 @@ getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F,
   region_name <- unique(dbpm_inputs$region)
   
   #Running model
-  result <- run_model(fishing_params, dbpm_inputs)
+  result <- run_model(fishing_params, dbpm_inputs, new_detritus_calc)
   
   #Aggregate data by year (mean to conserve units)
   error_calc <- result |> 
@@ -985,7 +993,8 @@ getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F,
 #Carry out LHS param search ----
 LHSsearch <- function(num_iter = 1, search_volume = "estimated", seed = 1234,
                       forcing_file = NULL, gridded_forcing = NULL, 
-                      best_param = T, best_val_folder = NULL){
+                      best_param = T, best_val_folder = NULL, 
+                      new_detritus_calc = F){
   #Inputs:
   # num_iter (integer) - Number of individual runs. Default is 1.
   # search_volume (character or numeric) - Default is "estimated". It also takes
@@ -1042,7 +1051,8 @@ LHSsearch <- function(num_iter = 1, search_volume = "estimated", seed = 1234,
   no_cores <- round((detectCores()*.75), 0)
   fishing_params$rmse <- mclapply(1:nrow(fishing_params), 
                                   FUN = function(i) getError(fishing_params[i,],
-                                                             dbpm_inputs), 
+                                                             dbpm_inputs, 
+                                                             new_detritus_calc), 
                                   mc.cores = no_cores) |> 
     unlist()
   
