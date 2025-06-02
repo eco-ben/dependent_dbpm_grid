@@ -44,7 +44,7 @@ new_inputs <- dbpm_inputs |>
 
 
 results_folder <- file.path(base_folder, f, "fishing_params", res,
-                            "best_fish_vals_weekly")
+                            "best_fish_vals_weekly_new_detritus")
   
 dir.create(results_folder)
 
@@ -53,14 +53,14 @@ params_calibration_weekly <- LHSsearch(num_iter = no_iter, seed = 42,
                                 forcing_file = new_inputs, 
                                 gridded_forcing = NULL, 
                                 best_val_folder = results_folder, 
-                                best_param = F) |> 
+                                best_param = F, new_detritus_calc = T) |> 
   rowid_to_column("id")
 
 
 
 params_corr <- params_calibration_weekly |> 
   split(params_calibration_weekly$id) |>
-  map_df(\(x) getError(x, dbpm_inputs, corr = T)) 
+  map_df(\(x) getError(x, dbpm_inputs, corr = T, new_detritus_calc = T)) 
 
 params_calibration_weekly <- params_calibration_weekly |> 
   #Removing column to avoid duplication
@@ -75,7 +75,7 @@ params_calibration_weekly <- params_calibration_weekly |>
 
 params_calibration_weekly |> 
   filter(rmse == min(rmse) & cor >= 0.5) |> 
-  corr_calib_plots(dbpm_inputs, results_folder)
+  corr_calib_plots(dbpm_inputs, results_folder, new_detritus_calc = T)
 
 
 fishing_params <- params_calibration_weekly |> 
@@ -84,9 +84,9 @@ fishing_params <- params_calibration_weekly |>
 
 
 results_folder <- file.path(base_folder, f, "fishing_params", res,
-                            "best_fish_vals_weekly")
+                            "best_fish_vals_new_detritus")
 
-params <- sizeparam(new_inputs, fishing_params, xmin_consumer_u = -3, 
+params <- sizeparam(dbpm_inputs, fishing_params, xmin_consumer_u = -3, 
                     xmin_consumer_v = -3)
 
 params |> 
@@ -96,13 +96,14 @@ params |>
              digits = 10)
 
 
-init_results <- run_model(fishing_params, new_inputs, withinput = F)
+init_results <- run_model(fishing_params, dbpm_inputs, withinput = F, 
+                          new_detritus_calc = T)
 
 pred_initial <- rowMeans(init_results$predators)
 detritivore_initial <- rowMeans(init_results$detritivores)
 detritus_initial <- mean(init_results$detritus)
 
-gridded_params <- sizeparam(new_inputs, fishing_params, xmin_consumer_u = -3, 
+gridded_params <- sizeparam(dbpm_inputs, fishing_params, xmin_consumer_u = -3, 
                             xmin_consumer_v = -3, 
                             use_init = T, pred_initial = pred_initial, 
                             detritivore_initial = detritivore_initial, 
@@ -114,3 +115,25 @@ gridded_params |>
   write_json(file.path(results_folder, 
                        paste0("dbpm_gridded_size_params_", f, ".json")),
              digits = 10)        
+
+
+
+#Plotting detritus
+detri_df <- data.frame(time = new_ts$time, year = new_ts$year, 
+                       detritus = init_results$detritus) 
+
+detri_df|> 
+  ggplot(aes(time, detritus))+
+  geom_line()
+
+ggsave(file.path(results_folder, 
+          paste0("detritus_", f, "_1841-2010.png")), device = "png")
+
+
+detri_df |> 
+  filter(year >= 1960) |> 
+  ggplot(aes(time, detritus))+
+  geom_line()
+
+ggsave(file.path(results_folder, 
+                 paste0("detritus_", f, "_1961-2010.png")), device = "png")
