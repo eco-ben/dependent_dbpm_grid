@@ -8,8 +8,9 @@ library(lubridate)
 library(zoo)
 
 
-f <-  "fao-31"
+f <-  "fao-27"
 res <- "1deg"
+base_folder <- "/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs"
 dbpm_inputs <- file.path(base_folder, f, "monthly_weighted", res,
                          paste0("dbpm_clim-fish-inputs_", f, 
                                 "_1841-2010.parquet")) |> 
@@ -18,18 +19,19 @@ dbpm_inputs <- file.path(base_folder, f, "monthly_weighted", res,
 dbpm_inputs <- dbpm_inputs |> 
   mutate(time = as_date(time))
 
-new_ts <- data.frame(time = seq(as_date("1841-01-01"), as_date("2010-12-31"), 
-                                by = "week")) |> 
-  mutate(year = year(time), month = month(time, label = T, abbr = F), 
-         day = day(time)) |> 
-  group_by(year, month) |> 
-  mutate(time = case_when(day == min(day) ~ ymd(paste(year, month, "01", 
-                                                      sep = "-")), 
-                          T ~ time))
+# new_ts <- data.frame(time = seq(as_date("1841-01-01"), as_date("2010-12-31"), 
+#                                 by = "week")) |> 
+#   mutate(year = year(time), month = month(time, label = T, abbr = F), 
+#          day = day(time)) |> 
+#   group_by(year, month) |> 
+#   mutate(time = case_when(day == min(day) ~ ymd(paste(year, month, "01", 
+#                                                       sep = "-")), 
+#                           T ~ time))
+# 
+# new_ts |> 
+#   write_csv_arrow("weekly_dates.csv")
 
-new_ts |> 
-  write_csv_arrow("weekly_dates.csv")
-  
+new_ts <- read_csv_arrow("weekly_dates.csv")
 
 new_inputs <- dbpm_inputs |> 
   right_join(new_ts, by = c("time", "year", "month")) |> 
@@ -47,7 +49,7 @@ results_folder <- file.path(base_folder, f, "fishing_params", res,
 dir.create(results_folder)
 
 no_iter <- 100
-params_calibration_weekly <- LHSsearch(num_iter = no_iter, 
+params_calibration_weekly <- LHSsearch(num_iter = no_iter, seed = 42,
                                 forcing_file = new_inputs, 
                                 gridded_forcing = NULL, 
                                 best_val_folder = results_folder, 
