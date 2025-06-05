@@ -14,11 +14,255 @@ base_folder <- "/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs"
 dbpm_inputs <- file.path(base_folder, f, "monthly_weighted", res,
                          paste0("dbpm_clim-fish-inputs_", f, 
                                 "_1841-2010.parquet")) |> 
-  read_parquet()
-
-dbpm_inputs <- dbpm_inputs |> 
+  read_parquet() |> 
   mutate(time = as_date(time))
 
+#Fishing parameters - No fishing
+fishing_params <- read_parquet(list.files(file.path(base_folder, f, 
+                                                    "fishing_params", res,
+                                                    "best_fish_vals"), 
+                                          "best-fishing", full.names = T)) |> 
+  filter(rmse == min(rmse) & cor >= 0.5) |> 
+  mutate(fmort_u = 0, fmort_v = 0)
+
+
+
+# Outlier grid cell -------------------------------------------------------
+#Input data from outlier grid cell
+dyn_outliers <- read_csv_arrow("scripts/dynamic_inputs_outliers.csv") |> 
+  rowid_to_column("id")
+
+#Names of columns where LOESS will be applied
+vars_loess <- dyn_outliers |> 
+  select(export_ratio:tos) |> 
+  names()
+
+#Defining LOESS function
+loess_smooth <- function(x, span, df){
+  loess(formula = paste(x, "id", sep = "~"), data = df, 
+        span = span)$fitted
+}  
+
+#Applying LOESS - span 10
+dyn_outliers_smooth01 <- as.data.frame(lapply(vars_loess, loess_smooth, 
+                                              span = 0.001470588, df = dyn_outliers), 
+                                       col.names = vars_loess) |> 
+  mutate(time = dyn_outliers$time)
+
+dyn_outliers_smooth02 <- as.data.frame(lapply(vars_loess, loess_smooth, 
+                                              span = 0.002, df = dyn_outliers), 
+                                       col.names = vars_loess) |> 
+  mutate(time = dyn_outliers$time)
+
+dyn_outliers_smooth05 <- as.data.frame(lapply(vars_loess, loess_smooth, 
+                                             span = 0.005, df = dyn_outliers), 
+                                      col.names = vars_loess) |> 
+  mutate(time = dyn_outliers$time)
+
+dyn_outliers_smooth1 <- as.data.frame(lapply(vars_loess, loess_smooth, 
+                                             span = 0.01, df = dyn_outliers), 
+                                      col.names = vars_loess) |> 
+  mutate(time = dyn_outliers$time)
+
+#Applying LOESS - span 20
+dyn_outliers_smooth10 <- as.data.frame(lapply(vars_loess, loess_smooth, 
+                                              span = 0.1, df = dyn_outliers), 
+                                       col.names = vars_loess) |> 
+  mutate(time = dyn_outliers$time)
+
+dyn_outliers |>
+  select(time, intercept) |>
+  mutate(intercept_01 = dyn_outliers_smooth01$intercept,
+         intercept_05 = dyn_outliers_smooth05$intercept,
+         intercept_1 = dyn_outliers_smooth1$intercept,
+         intercept_10 = dyn_outliers_smooth10$intercept) |>
+  # filter(year(time) > 1960) |>
+  pivot_longer(!time, names_to = "type", values_to = "vals") |>
+  ggplot(aes(x = time, y = vals, color = type))+
+  geom_line()
+
+
+#Running model data from outlier grid cell
+dbpm_inputs_outlier <- dbpm_inputs |> 
+  select(!all_of(vars_loess)) |> 
+  left_join(dyn_outliers)
+
+init_results_outlier <- run_model(fishing_params, dbpm_inputs_outlier,
+                                   withinput = F, new_detritus_calc = F)
+
+init_results_outlier_new <- run_model(fishing_params, dbpm_inputs_outlier,
+                                       withinput = F, new_detritus_calc = T)
+#Running model with LOESS - span 0.001
+dbpm_inputs_smooth01 <- dbpm_inputs |> 
+  select(!all_of(vars_loess)) |> 
+  left_join(dyn_outliers_smooth01)
+
+init_results_smooth01 <- run_model(fishing_params, dbpm_inputs_smooth01,
+                                   withinput = F, new_detritus_calc = F)
+
+init_results_smooth01_new <- run_model(fishing_params, dbpm_inputs_smooth01,
+                                       withinput = F, new_detritus_calc = T)
+
+#Running model with LOESS - span 0.002
+dbpm_inputs_smooth02 <- dbpm_inputs |> 
+  select(!all_of(vars_loess)) |> 
+  left_join(dyn_outliers_smooth02)
+
+init_results_smooth02 <- run_model(fishing_params, dbpm_inputs_smooth02,
+                                   withinput = F, new_detritus_calc = F)
+
+init_results_smooth02_new <- run_model(fishing_params, dbpm_inputs_smooth02,
+                                       withinput = F, new_detritus_calc = T)
+
+#Running model with LOESS - span 0.05
+dbpm_inputs_smooth05 <- dbpm_inputs |> 
+  select(!all_of(vars_loess)) |> 
+  left_join(dyn_outliers_smooth05)
+
+init_results_smooth05 <- run_model(fishing_params, dbpm_inputs_smooth05,
+                                   withinput = F, new_detritus_calc = F)
+
+init_results_smooth05_new <- run_model(fishing_params, dbpm_inputs_smooth05,
+                                       withinput = F, new_detritus_calc = T)
+
+
+#Running model with LOESS - span 10
+dbpm_inputs_smooth10 <- dbpm_inputs |> 
+  select(!all_of(vars_loess)) |> 
+  left_join(dyn_outliers_smooth10)
+  
+init_results_smooth10 <- run_model(fishing_params, dbpm_inputs_smooth10,
+                                   withinput = F, new_detritus_calc = F)
+
+init_results_smooth10_new <- run_model(fishing_params, dbpm_inputs_smooth10,
+                                   withinput = F, new_detritus_calc = T)
+
+#Running model with LOESS - span 20
+dbpm_inputs_smooth20 <- dbpm_inputs |> 
+  select(!all_of(vars_loess)) |> 
+  left_join(dyn_outliers_smooth20)
+
+init_results_smooth20 <- run_model(fishing_params, dbpm_inputs_smooth20,
+                                   withinput = F, new_detritus_calc = F)
+  
+init_results_smooth20_new <- run_model(fishing_params, dbpm_inputs_smooth20,
+                                       withinput = F, new_detritus_calc = T)
+
+
+#Plotting detritus
+detri_df <- data.frame(time = dbpm_inputs$time, 
+                       detritus_original_old = init_results_outlier$detritus,
+                       detritus_original_new = init_results_outlier_new$detritus,
+                       detritus_smooth01_old = init_results_smooth01$detritus,
+                       detritus_smooth01_new = init_results_smooth01_new$detritus,
+                       detritus_smooth02_old = init_results_smooth02$detritus,
+                       detritus_smooth02_new = init_results_smooth02_new$detritus,
+                       detritus_smooth05_old = init_results_smooth05$detritus,
+                       detritus_smooth05_new = init_results_smooth05_new$detritus) |> 
+  pivot_longer(!time, names_to = "type", values_to = "vals") 
+
+
+detri_df |> 
+  filter(grepl(pattern = "smooth01", type)) |> 
+  # filter(year(time) >= 1961) |>
+  ggplot(aes(time, vals, color = type, shape = type))+
+  geom_line()+
+  geom_point()
+
+data.frame(time = dbpm_inputs$time, 
+           detritus_original_old = init_results_outlier$detritus,
+           detritus_original_new = init_results_outlier_new$detritus) |> 
+  pivot_longer(!time, names_to = "type", values_to = "vals") |> 
+  # filter(year(time) >= 1961) |> 
+  ggplot(aes(time, vals, color = type, shape = type))+
+  geom_line()+
+  geom_point()
+
+
+
+# "Normal" grid cell ------------------------------------------------------
+dyn_normal <- read_csv_arrow("scripts/dynamic_inputs_normal.csv") |> 
+  rowid_to_column("id")
+
+#Applying LOESS - span 10
+dyn_normal_smooth10 <- as.data.frame(lapply(vars_loess, loess_smooth, 
+                                              span = 0.1, df = dyn_normal), 
+                                       col.names = vars_loess) |> 
+  mutate(time = dyn_normal$time)
+
+#Applying LOESS - span 20
+dyn_normal_smooth20 <- as.data.frame(lapply(vars_loess, loess_smooth, 
+                                              span = 0.2, df = dyn_normal), 
+                                       col.names = vars_loess) |> 
+  mutate(time = dyn_normal$time)
+
+dyn_normal |>
+  select(time, intercept) |>
+  mutate(intercept_10 = dyn_normal_smooth10$intercept,
+         intercept_20 = dyn_normal_smooth20$intercept) |>
+  filter(year(time) > 1960) |>
+  pivot_longer(!time, names_to = "type", values_to = "vals") |>
+  ggplot(aes(x = time, y = vals, color = type))+
+  geom_line()
+
+
+#Running model data from normal grid cell
+dbpm_inputs_normal <- dbpm_inputs |> 
+  select(!all_of(vars_loess)) |> 
+  left_join(dyn_normal)
+
+init_results_normal <- run_model(fishing_params, dbpm_inputs_normal,
+                                  withinput = F, new_detritus_calc = F)
+
+init_results_normal_new <- run_model(fishing_params, dbpm_inputs_normal,
+                                      withinput = F, new_detritus_calc = T)
+
+#Running model with LOESS - span 10
+dbpm_inputs_smooth10 <- dbpm_inputs |> 
+  select(!all_of(vars_loess)) |> 
+  left_join(dyn_normal_smooth10)
+
+init_results_smooth10 <- run_model(fishing_params, dbpm_inputs_smooth10,
+                                   withinput = F, new_detritus_calc = F)
+
+init_results_smooth10_new <- run_model(fishing_params, dbpm_inputs_smooth10,
+                                       withinput = F, new_detritus_calc = T)
+
+#Running model with LOESS - span 20
+dbpm_inputs_smooth20 <- dbpm_inputs |> 
+  select(!all_of(vars_loess)) |> 
+  left_join(dyn_normal_smooth20)
+
+init_results_smooth20 <- run_model(fishing_params, dbpm_inputs_smooth20,
+                                   withinput = F, new_detritus_calc = F)
+
+init_results_smooth20_new <- run_model(fishing_params, dbpm_inputs_smooth20,
+                                       withinput = F, new_detritus_calc = T)
+
+
+#Plotting detritus
+detri_df_normal <- data.frame(time = dbpm_inputs$time, 
+                       detritus_original_old = init_results_normal$detritus,
+                       detritus_original_new = init_results_normal_new$detritus,
+                       detritus_smooth10_old = init_results_smooth10$detritus,
+                       detritus_smooth10_new = init_results_smooth10_new$detritus,
+                       detritus_smooth20_old = init_results_smooth20$detritus,
+                       detritus_smooth20_new = init_results_smooth20_new$detritus) |> 
+  pivot_longer(!time, names_to = "type", values_to = "vals") 
+
+
+detri_df_normal |> 
+  # filter(year(time) >= 1975) |>
+  ggplot(aes(time, vals, color = type, shape = type))+
+  geom_line()+
+  geom_point()
+
+
+
+
+
+
+# 
 # new_ts <- data.frame(time = seq(as_date("1841-01-01"), as_date("2010-12-31"), 
 #                                 by = "week")) |> 
 #   mutate(year = year(time), month = month(time, label = T, abbr = F), 
@@ -43,50 +287,29 @@ new_inputs <- dbpm_inputs |>
 
 
 
+
+  
+# dir.create(results_folder)
+
+
+
+
+init_results <- run_model(fishing_params, dbpm_inputs, withinput = F, 
+                          new_detritus_calc = F)
+
+
+
+
+
+
+
+
+
+
 results_folder <- file.path(base_folder, f, "fishing_params", res,
                             "best_fish_vals_weekly_new_detritus")
-  
-dir.create(results_folder)
 
-no_iter <- 100
-params_calibration_weekly <- LHSsearch(num_iter = no_iter, seed = 42,
-                                forcing_file = new_inputs, 
-                                gridded_forcing = NULL, 
-                                best_val_folder = results_folder, 
-                                best_param = F, new_detritus_calc = T) |> 
-  rowid_to_column("id")
-
-
-
-params_corr <- params_calibration_weekly |> 
-  split(params_calibration_weekly$id) |>
-  map_df(\(x) getError(x, dbpm_inputs, corr = T, new_detritus_calc = T)) 
-
-params_calibration_weekly <- params_calibration_weekly |> 
-  #Removing column to avoid duplication
-  select(!region) |> 
-  bind_cols(params_corr) |> 
-  select(!id) |> 
-  #Remove any rows where simulation returned NA values
-  filter(catchNA == 0) |> 
-  arrange(desc(cor), rmse) |> 
-  relocate(region, .before = fmort_u)
-
-
-params_calibration_weekly |> 
-  filter(rmse == min(rmse) & cor >= 0.5) |> 
-  corr_calib_plots(dbpm_inputs, results_folder, new_detritus_calc = T)
-
-
-fishing_params <- params_calibration_weekly |> 
-  # Find parameters with lowest RMSE and correlation of 0.5 or higher
-  filter(rmse == min(rmse) & cor >= 0.5)
-
-
-results_folder <- file.path(base_folder, f, "fishing_params", res,
-                            "best_fish_vals_new_detritus")
-
-params <- sizeparam(dbpm_inputs, fishing_params, xmin_consumer_u = -3, 
+params <- sizeparam(new_inputs, fishing_params, xmin_consumer_u = -3, 
                     xmin_consumer_v = -3)
 
 params |> 
@@ -96,14 +319,14 @@ params |>
              digits = 10)
 
 
-init_results <- run_model(fishing_params, dbpm_inputs, withinput = F, 
+init_results <- run_model(fishing_params, new_inputs, withinput = F, 
                           new_detritus_calc = T)
 
 pred_initial <- rowMeans(init_results$predators)
 detritivore_initial <- rowMeans(init_results$detritivores)
 detritus_initial <- mean(init_results$detritus)
 
-gridded_params <- sizeparam(dbpm_inputs, fishing_params, xmin_consumer_u = -3, 
+gridded_params <- sizeparam(new_inputs, fishing_params, xmin_consumer_u = -3, 
                             xmin_consumer_v = -3, 
                             use_init = T, pred_initial = pred_initial, 
                             detritivore_initial = detritivore_initial, 
