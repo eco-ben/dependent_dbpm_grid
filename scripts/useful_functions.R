@@ -19,7 +19,6 @@ library(patchwork)
 # Getting DBPM model parameters ready -------------------------------------
 sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12, 
                       xmin_consumer_u = -7, xmin_consumer_v = -7, xmax = 6, 
-                      # tstepspryr = 48,
                       Ngrid = NA, use_init = FALSE, 
                       pred_initial = NA, detritivore_initial = NA, 
                       detritus_initial = NA, equilibrium = FALSE,
@@ -31,7 +30,7 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
   #   "03_processing_effort_fishing_inputs.R"
   # - fishing_params (data frame) Containing fishing parameters: "f_u", "f_v",
   #   "f_minu", "f_minv", and "search_vol"
-  # - dx (numeric) Default value is 0.1. Size increment after discretization for 
+  # - dx (numeric) Default value is 0.1. Size increment after discretisation for 
   #   integration (log body weight)
   # - xmin (numeric) Default value is -12. Minimum log10 body size of plankton
   # - xmin_consumer_u (numeric) Default value is -7. Minimum log10 body size in 
@@ -39,8 +38,6 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
   # - xmin_consumer_v (numeric) Default value is -7. Minimum log10 body size in
   #   dynamics benthic detritivores
   # - xmax (numeric). Default value is 6. Maximum log10 body size of predators
-  # - tstepspryr (numeric) Default value is 48. Number of time steps to include 
-  #   within a year
   # - Ngrid (numeric) Optional. Number of grid cells.
   # - use_init (boolean). Default value is FALSE. If set to TRUE, the 
   #   initialisation values for predators (U_initial), detritivores (V.initial) 
@@ -812,7 +809,7 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = T,
   # result_set (data frame) - ???
   
   params <- sizeparam(dbpm_inputs, fishing_params, xmin_consumer_u = -3, 
-                      xmin_consumer_v = -3)#, tstepspryr = 12)
+                      xmin_consumer_v = -3)
   
   # run model through time
   # TO DO IN SIZEMODEL CODE: make fishing function like one in model template
