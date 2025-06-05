@@ -12,6 +12,7 @@ import os
 from glob import glob
 import pandas as pd
 import json
+from statsmodels.nonparametric.smoothers_lowess import lowess
 
 
 #Transforming netCDF files to zarr
@@ -314,6 +315,36 @@ def gridded_spinup(file_path, start_spin, end_spin, spinup_period,
     return spinup_da
 
 
+# Applying LOESS smoothing to DBPM input data
+def loess_xarray(da, time_dim, **kwargs):
+    '''
+    Inputs:
+    - da (Data Array) Three dimensional xarray data array (time, lat, lon) to be smoothed.
+    - time_dim (Data Array) Time dimension from "da" input.
+    **Optional**: 
+    - frac (numeric) Proportion of timesteps to be used in data smoothing. If not provided,
+    it defaults to 0.5
+
+    Outputs:
+    smooth (1D numpy array) Containing smoothed "da" values.
+    '''
+    # If "frac" is not provided, default to 0.5
+    if kwargs.get('frac') is not None:
+        frac = kwargs['frac']
+    else:
+        frac = 0.5
+
+    #Turn time_sim and da to numpy arrays
+    data_vals = np.asarray(da)
+    time_vals = np.asarray(time_dim)
+
+    #Applying LOESS smoother - Keep only smoothed values (i.e., ignore time column)
+    smooth = lowess(data_vals, time_vals, is_sorted = True, frac = frac, it = 0, 
+                    missing = 'none')[:, 1]
+    
+    return smooth
+
+
 #Format gridded_params in Python friendly way
 def gridded_param_python(gridded_params):
     '''
@@ -508,7 +539,10 @@ def effort_calculation(predators, detritivores, effort, depth, size_bin_vals,
 
     # Adjusting time stamp
     new_effort['time'] = [effort.time.values]
-    new_effort = new_effort.transpose('time', 'lat', 'lon')
+    try:
+        new_effort = new_effort.transpose('time', 'lat', 'lon')
+    except:
+        pass
     #Adding name
     new_effort.name = 'effort'
 
@@ -806,7 +840,10 @@ def feeding_satiation_rates(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
         print('the "group" parameter must be "predators", "detritivores", or "detritus"')
 
     #Reorganise output dimensions
-    feed_sat_rates = feed_sat_rates.transpose('time', 'size_class', 'lat', 'lon')
+    try:
+        feed_sat_rates = feed_sat_rates.transpose('time', 'size_class', 'lat', 'lon')
+    except:
+        feed_sat_rates = feed_sat_rates.transpose('time', 'size_class')
     #Apply spatial mask
     feed_sat_rates = feed_sat_rates.where(dbpm_fixed_inputs['mask'])
     #Ensure correct time is applied
@@ -893,7 +930,10 @@ def mortality_calc(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
         print('the "group" parameter must be either "predators" or "detritivores"')
         
     #Reorganise dimensions
-    mortality_terms = mortality_terms.transpose('time', 'size_class', 'lat', 'lon')
+    try:
+        mortality_terms = mortality_terms.transpose('time', 'size_class', 'lat', 'lon')
+    except:
+        mortality_terms = mortality_terms.transpose('time', 'size_class')
     #Apply spatial mask
     mortality_terms = mortality_terms.where(dbpm_fixed_inputs['mask'])
     #Ensure correct time is applied
@@ -927,7 +967,10 @@ def growth_rates_calc(gridded_params, feed_sat_rates, dbpm_fixed_inputs):
                                             'GG_v': growth_int_det})
 
     #Reorganise dimensions
-    growth_reprod = growth_reprod.transpose('time', 'size_class', 'lat', 'lon')
+    try:
+        growth_reprod = growth_reprod.transpose('time', 'size_class', 'lat', 'lon')
+    except:
+        growth_reprod = growth_reprod.transpose('time', 'size_class')
     #Apply spatial mask
     growth_reprod = growth_reprod.where(dbpm_fixed_inputs['mask'])
     #Ensure correct time is applied
@@ -986,7 +1029,10 @@ def reproduction_rates(gridded_params, feed_sat_rates, dbpm_fixed_inputs, group)
         print('the "group" parameter must be either "predators" or "detritivores"')
 
     #Reorganise dimensions
-    reprod_rates = reprod_rates.transpose('time', 'size_class', 'lat', 'lon')
+    try:
+        reprod_rates = reprod_rates.transpose('time', 'size_class', 'lat', 'lon')
+    except:
+        reprod_rates = reprod_rates.transpose('time', 'size_class')
     #Apply spatial mask
     reprod_rates = reprod_rates.where(dbpm_fixed_inputs['mask'])
     #Ensure correct time is applied
@@ -1021,7 +1067,10 @@ def detritus_output(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     # Adding variable name
     output_w.name = 'output_w'
     #Reorganise dimensions
-    output_w = output_w.transpose('time', 'lat', 'lon')
+    try:
+        output_w = output_w.transpose('time', 'lat', 'lon')
+    except:
+        pass
     #Apply spatial mask
     output_w = output_w.where(dbpm_fixed_inputs['mask'])
     
@@ -1057,7 +1106,10 @@ def defecation_predators(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     # Adding variable name
     defbypred.name = 'defbypred'
     #Reorganise dimensions
-    defbypred = defbypred.transpose('time', 'lat', 'lon')
+    try:
+        defbypred = defbypred.transpose('time', 'lat', 'lon')
+    except:
+        pass
     #Apply spatial mask
     defbypred = defbypred.where(dbpm_fixed_inputs['mask'])
     
@@ -1130,7 +1182,10 @@ def detritus_pool(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     det_pool = xr.Dataset(data_vars = {'input_w': input_w, 
                                        'dW': dW})
     #Reorganise dimensions
-    det_pool = det_pool.transpose('time', 'lat', 'lon')
+    try:
+        det_pool = det_pool.transpose('time', 'lat', 'lon')
+    except:
+        pass
     #Apply spatial mask
     det_pool = det_pool.where(dbpm_fixed_inputs['mask'])
     
@@ -1203,7 +1258,10 @@ def biomass_density(gridded_params, dbpm_fixed_inputs, growth_rate,
 
     density = xr.Dataset(data_vars = {'Ai': Ai, 'Bi': Bi, 'Si': Si})
     #Reorganise dimensions
-    density = density.transpose('time', 'size_class', 'lat', 'lon')
+    try:
+        density = density.transpose('time', 'size_class', 'lat', 'lon')
+    except:
+        density = density.transpose('time', 'size_class')
     #Apply spatial mask
     density = density.where(dbpm_fixed_inputs['mask'])
 
@@ -1273,7 +1331,10 @@ def tot_biomass_calc(gridded_params, dbpm_fixed_inputs, group, biomass_current,
     #Adding name to data array
     biomass_next.name = group
     #Reorganise dimensions
-    biomass_next = biomass_next.transpose('time', 'size_class', 'lat', 'lon')
+    try:
+        biomass_next = biomass_next.transpose('time', 'size_class', 'lat', 'lon')
+    except:
+        biomass_next = biomass_next.transpose('time', 'size_class')
     #Apply spatial mask
     biomass_next = biomass_next.where(dbpm_fixed_inputs['mask'])
         
