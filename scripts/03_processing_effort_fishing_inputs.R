@@ -18,6 +18,16 @@ fao <- list.dirs(base_folder, recursive = F, full.names = F) |>
 # Resolution
 resolutions <- c("025deg", "1deg")
 
+# Setting "smoothed" to TRUE will use 'smoothed' instead of original GFDL 
+# outputs to force DBPM
+smoothed <- TRUE
+if(smoothed){
+  fn_search <- "-smoothed"
+}else{
+  fn_search <- ""
+}
+
+
 for(f in fao){
   fao_id <- as.numeric(str_extract(f, "[0-9]{2}"))
   for(res in resolutions){
@@ -33,6 +43,7 @@ for(f in fao){
     # saving results
     clim_forcing_file <- list.files(forcing_folder, pattern = "obsclim|spinup",
                                     full.names = T) |>
+      str_subset(paste0("inputs", fn_search, "_fao")) |> 
       map(\(x) read_parquet(x)) |> 
       bind_rows() |> 
       arrange(time) |> 
@@ -153,8 +164,8 @@ for(f in fao){
     #Saving summarised catch and effort data
     DBPM_effort_catch_input |> 
       write_parquet(file.path(forcing_folder, 
-                              paste0("dbpm_effort-catch-inputs_", f, 
-                                     ".parquet")))
+                              paste0("dbpm_effort-catch-inputs", fn_search, "_",
+                                     f, ".parquet")))
     
     #Removing individual data frames
     rm(effort_data, catch_data)
@@ -199,7 +210,7 @@ for(f in fao){
     ## Saving catch and effort, and inputs data -------------------------------
     forcing_file |> 
       write_parquet(file.path(forcing_folder, 
-                              paste0("dbpm_clim-fish-inputs_", f, 
+                              paste0("dbpm_clim-fish-inputs", fn_search, "_", f, 
                                      "_1841-2010.parquet")))
   }
 }
