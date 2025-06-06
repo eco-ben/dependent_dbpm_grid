@@ -390,7 +390,7 @@ for reg in regions:
                                                    'time': -1}).load()
         ben_tempeffect_out.to_zarr(os.path.join(
             out_folder, 
-            f'ben-temp-eff_spinup_obsclim_{res_arc}_{reg}{fn_search}monthly_1741_2010.zarr/'),
+            f'ben-temp-eff_spinup_obsclim_{res_arc}_{reg}{fn_search}1741_2010.zarr/'),
             consolidated = True, mode = 'w')
 
 
