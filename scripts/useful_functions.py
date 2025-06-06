@@ -729,37 +729,37 @@ def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None, fishing = True
     '''
 
     if smoothed:
-        cap_search = '_monthly-smoothed_'
+        fn_search = '_monthly-smoothed_'
     else:
-        cap_search = '_monthly_'
+        fn_search = '_monthly_'
         
     #Load data
     [ui0_search] = glob(os.path.join(gridded_folder, 
-                                   f'ui0{cap_search}_spinup_obsclim*'))
+                                   f'ui0_spinup_obsclim*{fn_search}*'))
     ui0 = xr.open_zarr(ui0_search, chunks = {'time': -1, 'lon': -1, 
                                              'lat': -1})['ui0']
 
     slope_search = [f for f in glob(
-        os.path.join(gridded_folder, f'*_slope_*{cap_search}_*')) 
+        os.path.join(gridded_folder, f'*_slope_*{fn_search}*')) 
                     if 'ctrlclim' not in f]
     slope = xr.open_mfdataset(
         slope_search, engine = 'zarr', 
         parallel = True)['slope'].chunk({'time': -1, 'lon': -1, 'lat': -1})
     
-    [pel_temp_search] = glob(os.path.join(gridded_folder, 
-                                        'pel-temp-eff_spinup_obsclim*'))
+    [pel_temp_search] = glob(os.path.join(
+        gridded_folder, f'pel-temp-eff_spinup_obsclim*{fn_search}*'))
     pel_tempeffect = xr.open_zarr(
         pel_temp_search, chunks = {'time': -1, 'lon': -1, 
                                    'lat': -1})['pel_temp_eff']
     
-    [ben_temp_search] = glob(os.path.join(gridded_folder, 
-                                        'ben-temp-eff_spinup_obsclim*'))
+    [ben_temp_search] = glob(os.path.join(
+        gridded_folder, f'ben-temp-eff_spinup_obsclim*{fn_search}*'))
     ben_tempeffect = xr.open_zarr(
         ben_temp_search, chunks = {'time': -1, 'lon': -1, 
                                    'lat': -1})['ben_temp_eff']
 
     sinking_rate_search = [f for f in glob(
-        os.path.join(gridded_folder, f'*_er{cap_search}_*')) 
+        os.path.join(gridded_folder, f'*_er_*{fn_search}*')) 
                     if 'ctrlclim' not in f]
     sinking_rate = xr.open_mfdataset(
         sinking_rate_search, engine = 'zarr', 
