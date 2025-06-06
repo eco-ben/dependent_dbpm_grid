@@ -78,14 +78,11 @@ for fao in fao_code:
                      glob(os.path.join(gfdl_out, f'*ctrlclim_deptho*')))
         weighted_stable_spin_df = uf.weighted_mean_timestep(stable_fn, weights, region_int)
         
-        #Adding depth from ctrlclim
-        # [depth] = weighted_ctrl_df.depth_m.unique()
-        # weighted_spinup_df['depth_m'] = depth
-        # weighted_stable_spin_df['depth_m'] = depth
-        
+        #Defining output folder
         gfdl_out = f'/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs/{reg}/monthly_weighted/{res}'
         os.makedirs(gfdl_out, exist_ok = True)
 
+        #Saving data
         weighted_obs_df.to_parquet(
             os.path.join(gfdl_out, 
                          f'obsclim_dbpm_clim-inputs{weighted_fn}_{reg}_1961-2010.parquet'), 
