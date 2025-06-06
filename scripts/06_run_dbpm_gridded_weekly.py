@@ -19,13 +19,13 @@ if __name__ == '__main__':
     client = Client(threads_per_worker = 1, memory_limit = 0)
     
     ## Name of region and model resolution ----
-    reg = 'fao-31'
+    reg = 'fao-27'
     res = '1deg'
 
     ## If starting DBPM run from a specific time step ----
     # Character: Year and month from when DBPM initialisation values should be loaded
     # If starting model for the first time, it should be set to None
-    init_time = '1851-07-01'
+    init_time = None
 
     ## Defining input and output folders ----
     base_folder = '/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs'
@@ -83,6 +83,8 @@ if __name__ == '__main__':
     
         #Creating a single dataset for all dynamic inputs
         ds_dynamic['effort'] = effort.load()
+        #Remove first timestep because it is not needed
+        ds_dynamic = ds_dynamic.sel(time = slice(subset_time, None))
     
     #Gridded parameters
     gridded_params = json.load(open(
@@ -103,7 +105,7 @@ if __name__ == '__main__':
                                               gridded_params)
             # Saving predation mortality
             #Getting year and month 
-            dt_eff = pd.to_datetime(eff_short.time.values[0]).strftime('%Y-%m')
+            dt_eff = pd.to_datetime(eff_short.time.values[0]).strftime('%Y-%m-%d')
             # Creating file name
             fn = f'effort_{res}_{reg}_{dt_eff}.nc'
             eff_short.to_netcdf(os.path.join(out_folder, fn))
@@ -112,7 +114,7 @@ if __name__ == '__main__':
             #Remove variables not needed
             del dt_eff, fn
         except:
-            dt = pd.to_datetime(ds_dyn.time.values).strftime('%Y-%m')
+            dt = pd.to_datetime(ds_dyn.time.values).strftime('%Y-%m-%d')
             eff_short = xr.open_dataarray(glob(os.path.join(out_folder, 
                                                             f'effort*{dt}*'))[0])
             ds_dynamic['effort'] = xr.where(ds_dynamic.time == ds_dynamic.time[t], 
