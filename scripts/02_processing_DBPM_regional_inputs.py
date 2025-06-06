@@ -47,7 +47,7 @@ for fao in fao_code:
             if 'monthly' in f:
                 loess_smooth = True
                 weighted_search = '_monthly-smoothed_'
-                weighted_fn = '-smoothed_'
+                weighted_fn = '-smoothed'
             else:
                 loess_smooth = False
                 weighted_search = '_monthly_'
@@ -62,26 +62,26 @@ for fao in fao_code:
         
         region_int = reg.replace('-', ' ').upper()
         
-        weighted_obs_df = uf.weighted_mean_timestep(
-            glob(os.path.join(gfdl_out, f'*obsclim*{weighted_search}*')), 
-            weights, region_int)
+        obs_fn = (glob(os.path.join(gfdl_out, f'*gfdl*obsclim*{weighted_search}*'))+
+                  glob(os.path.join(gfdl_out, f'*obsclim_deptho*')))
+        weighted_obs_df = uf.weighted_mean_timestep(obs_fn, weights, region_int)
         
-        weighted_ctrl_df = uf.weighted_mean_timestep(
-            glob(os.path.join(gfdl_out, f'*ctrlclim*{weighted_search}*')), 
-            weights, region_int)
+        ctrl_fn = (glob(os.path.join(gfdl_out, f'gfdl*ctrlclim*{weighted_search}*'))+ 
+                   glob(os.path.join(gfdl_out, f'*ctrlclim_deptho*')))
+        weighted_ctrl_df = uf.weighted_mean_timestep(ctrl_fn, weights, region_int)
         
-        weighted_spinup_df = uf.weighted_mean_timestep(
-            glob(os.path.join(gfdl_out, f'*spinup*{weighted_search}*')), 
-            weights, region_int)
+        spinup_fn = (glob(os.path.join(gfdl_out, f'gfdl*spinup*{weighted_search}*'))+
+                     glob(os.path.join(gfdl_out, f'*ctrlclim_deptho*')))
+        weighted_spinup_df = uf.weighted_mean_timestep(spinup_fn, weights, region_int)
         
-        weighted_stable_spin_df = uf.weighted_mean_timestep(
-            glob(os.path.join(gfdl_out, f'*stable-spin*{weighted_search}*')), 
-            weights, region_int)
+        stable_fn = (glob(os.path.join(gfdl_out, f'*gfdl*stable-spin*{weighted_search}*'))+
+                     glob(os.path.join(gfdl_out, f'*ctrlclim_deptho*')))
+        weighted_stable_spin_df = uf.weighted_mean_timestep(stable_fn, weights, region_int)
         
         #Adding depth from ctrlclim
-        [depth] = weighted_ctrl_df.depth_m.unique()
-        weighted_spinup_df['depth_m'] = depth
-        weighted_stable_spin_df['depth_m'] = depth
+        # [depth] = weighted_ctrl_df.depth_m.unique()
+        # weighted_spinup_df['depth_m'] = depth
+        # weighted_stable_spin_df['depth_m'] = depth
         
         gfdl_out = f'/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs/{reg}/monthly_weighted/{res}'
         os.makedirs(gfdl_out, exist_ok = True)
