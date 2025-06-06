@@ -23,7 +23,7 @@ if __name__ == '__main__':
     res = '1deg'
 
     ## Define if run should include fishing ----
-    fishing = False
+    fishing = True
 
     ## If starting DBPM run from a specific time step ----
     # Character: Year and month from when DBPM initialisation values should be loaded
@@ -37,7 +37,7 @@ if __name__ == '__main__':
     #Location of gridded inputs
     gridded_folder = os.path.join(base_folder, reg, 'gridded', res)
     #Folder where outputs will be stored 
-    out_folder = os.path.join(base_out_folder, reg, 'non_fishing_runs', res)
+    out_folder = os.path.join(base_out_folder, reg, 'fishing_runs_smoothed', res)
     #If output folder does not exist, it will create it
     os.makedirs(out_folder, exist_ok = True) 
     
@@ -61,7 +61,7 @@ if __name__ == '__main__':
     ## Loading dynamic data ----
     ds_dynamic = uf.loading_dbpm_dynamic_inputs(gridded_folder, init_time, 
                                                 fishing = fishing,
-                                                capped = False)
+                                                smoothed = False)
   
     if init_time is not None and fishing:
         #Timestep from when to restart DBPM 
