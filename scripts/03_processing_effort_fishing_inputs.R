@@ -202,10 +202,11 @@ for(f in fao){
       dir.create(folder_out, recursive = T)
     }
     
-    #Saving result that matches previous work
-    ggsave(file.path(folder_out, paste0("effort_", f, "_", res, ".pdf")), 
-           device = "pdf", dpi = 300)
-  
+    #Saving results - only save once per FAO region
+    fout <- file.path(folder_out, paste0("effort_", f, ".pdf"))
+    if(!file.exists(fout)){
+      ggsave(fout, device = "pdf", dpi = 300)
+    }
   
     ## Saving catch and effort, and inputs data -------------------------------
     forcing_file |> 
