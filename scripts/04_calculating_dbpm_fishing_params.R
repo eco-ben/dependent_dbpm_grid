@@ -34,7 +34,7 @@ for(f in fao){
     # Searching best fishing parameters values for area of interest -----------
     #Path to folder where results will be stored
     results_folder <- file.path(base_folder, f, "fishing_params", res,
-                                "best_fish_vals")
+                                paste0("best_fish_vals", fn_search))
     #Number of iterations
     no_iter <- 100
     params_calibration <- LHSsearch(num_iter = no_iter,
@@ -227,7 +227,7 @@ for(res in resolutions){
     
   for(f in fao){
     results_folder <- file.path(base_folder, f, "fishing_params", res,
-                                "best_fish_vals")
+                                paste0("best_fish_vals", fn_search))
     
     dbpm_inputs <- file.path(base_folder, f, "monthly_weighted", res,
                              paste0("dbpm_clim-fish-inputs", fn_search, "_", f, 
@@ -270,20 +270,21 @@ for(res in resolutions){
                            paste0("dbpm_gridded_size_params_", f, ".json")),
                  digits = 10)
     
+    # Defining folder to save non-spatial results
+    dbpm_out_folder <- file.path(out_folder, f, 
+                                 paste0("fishing_runs", fn_search),
+                                 "nonspatial")
+    if(!dir.exists(dbpm_out_folder)){
+      dir.create(dbpm_out_folder, recursive = T)
+    }
     
     # Running non-spatial DBPM and saving results - This step is needed only 
     # once
-    if(res == "025deg"){
-      # Defining folder to save non-spatial results
-      dbpm_out_folder <- file.path(out_folder, f, "fishing_runs", "nonspatial")
-      if(!dir.exists(dbpm_out_folder)){
-        dir.create(dbpm_out_folder, recursive = T)
-      }
-      
+    fout <- file.path(dbpm_out_folder, 
+                      paste0("dbpm_nonspatial_", f, "_1841-2010.parquet"))
+    if(!file.exists(fout)){
       run_model(fish_param, dbpm_inputs, new_detritus_calc = F) |> 
-        write_parquet(
-          file.path(dbpm_out_folder, 
-                    paste0("dbpm_nonspatial_", f, "_1841-2010.parquet")))
+        write_parquet(fout)
     }
   }
 }
