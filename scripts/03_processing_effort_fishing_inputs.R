@@ -27,7 +27,7 @@ if(smoothed){
   fn_search <- ""
 }
 
-
+# Applying workflow to all regions
 for(f in fao){
   fao_id <- as.numeric(str_extract(f, "[0-9]{2}"))
   for(res in resolutions){
