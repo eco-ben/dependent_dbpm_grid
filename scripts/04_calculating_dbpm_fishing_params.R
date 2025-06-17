@@ -99,9 +99,9 @@ for(f in fao){
 
 # Getting a list of files containing fishing parameters calculated for all 
 # regions
-fish_param_files <- list.files(base_folder, pattern = "parquet$", 
+fish_param_files <- list.files(base_folder, pattern = "best-fishing-parameters", 
                                recursive = T, full.names = T) |> 
-  str_subset("fishing_params") 
+  str_subset(paste0("best_fish_vals", fn_search)) 
 
 # Load all fishing parameter files for each resolution
 for(res in resolutions){
@@ -135,7 +135,7 @@ for(res in resolutions){
     # Searching best fishing parameters values for area of interest -----------
     #Path to folder where results will be stored
     results_folder <- file.path(base_folder, f, "fishing_params", res,
-                                "best_fish_vals")
+                                paste0("best_fish_vals", fn_search))
     
     params_calibration_optim <- LHSsearch(num_iter = no_iter, seed = 1234,
                                           forcing_file = dbpm_inputs, 
@@ -194,7 +194,7 @@ for(res in resolutions){
 fish_param_files <- list.files(base_folder, 
                                pattern = "best-fishing-parameters", 
                                recursive = T, full.names = T) |> 
-  str_subset("/best_fish_vals/") 
+  str_subset(paste0("/best_fish_vals", fn_search))
 
 out_folder <- "/g/data/vf71/fishmip_outputs/ISIMIP3a/fao_outputs"
 
