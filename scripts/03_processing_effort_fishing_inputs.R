@@ -78,7 +78,7 @@ for(f in fao){
     # Loading catches data ----------------------------------------------------
     #From Watson et al 2018
     catch_watson <- file.path(fishing_folder, "DKRZ_EffortFiles",
-                              "catch-validation_isimip3a_histsoc_1850_2004.csv") |> 
+                              "catch_histsoc_1869_2017_EEZ_addFAO.csv") |> 
       read_csv_arrow(col_select = c("Year", "fao_area", "Reported", "IUU")) |>
       #Selecting area of interest
       filter(fao_area == fao_id) |> 
