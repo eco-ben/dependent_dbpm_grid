@@ -97,16 +97,15 @@ for(f in fao){
 # This section may need to be ran multiple times until all regions have good
 # parameters
 
-# Getting a list of files containing fishing parameters calculated for all 
-# regions
-fish_param_files <- list.files(base_folder, pattern = "best-fishing-parameters", 
-                               recursive = T, full.names = T) |> 
-  str_subset(paste0("best_fish_vals", fn_search)) 
-
 # Load all fishing parameter files for each resolution
 for(res in resolutions){
-  fish_param <- fish_param_files |> 
-    str_subset(res) |> 
+  # Getting a list of files containing fishing parameters calculated for all 
+  # regions
+  fish_param <- fao |> 
+    map_chr(\(x) list.files(file.path(base_folder, x, "fishing_params", res,
+                                      paste0("best_fish_vals", fn_search)),
+                            pattern = "best-fishing-parameters", recursive = T,
+                            full.names = T)) |> 
     map(~read_parquet(.)) |> 
     bind_rows()
   
@@ -189,42 +188,31 @@ for(res in resolutions){
 
 
 # Getting DBPM parameters -------------------------------------------------
-# Getting a list of files containing fishing parameters calculated for all 
-# regions
-fish_param_files <- list.files(base_folder, 
-                               pattern = "best-fishing-parameters", 
-                               recursive = T, full.names = T) |> 
-  str_subset(paste0("/best_fish_vals", fn_search))
-
 out_folder <- "/g/data/vf71/fishmip_outputs/ISIMIP3a/fao_outputs"
 
 for(res in resolutions){
-  # Load all fishing parameter files for coarser resolution
-  fishing_params <- fish_param_files |> 
-    str_subset("1deg") |> 
+  # Getting a list of files containing fishing parameters calculated for all 
+  # regions
+  fishing_params <- fao |> 
+    map_chr(\(x) list.files(file.path(base_folder, x, "fishing_params", res,
+                                      paste0("best_fish_vals", fn_search)),
+                            pattern = "best-fishing-parameters", recursive = T,
+                            full.names = T)) |> 
+    # Load all fishing parameter files for coarser resolution
     map(~read_parquet(.)) |> 
-    bind_rows() 
-  
-  #Filtering best fishing parameters
-  #Find regions that did not meet the correlation requirement (FAO 21 and 58)
-  fp <- fishing_params |> 
-    group_by(region) |> 
-    # Find parameters with lowest RMSE
-    filter(rmse == min(rmse) & str_detect(region, "21|58"))
-  
-  #Find parameters for all other regions
-  fishing_params <- fishing_params |> 
+    bind_rows() |> 
     group_by(region) |> 
     # Find parameters with lowest RMSE and correlation of 0.5 or higher
     filter(cor >= 0.5) |> 
-    filter(rmse == min(rmse)) |> 
-    # Merge with previous dataframe
-    bind_rows(fp) |> 
-    arrange(region)
+    filter(rmse == min(rmse))
   
-  #Removing variable not needed
-  rm(fp)
-    
+  #Filtering best fishing parameters
+  #Find regions that did not meet the correlation requirement (FAO 21 and 58)
+  # fp <- fishing_params |> 
+  #   group_by(region) |> 
+  #   # Find parameters with lowest RMSE
+  #   filter(rmse == min(rmse) & str_detect(region, "21|58"))
+
   for(f in fao){
     results_folder <- file.path(base_folder, f, "fishing_params", res,
                                 paste0("best_fish_vals", fn_search))
