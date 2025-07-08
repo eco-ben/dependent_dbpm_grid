@@ -81,7 +81,7 @@ for(f in fao){
                               "catch_histsoc_1869_2017_EEZ_addFAO.csv") |> 
       read_csv_arrow(col_select = c("Year", "fao_area", "Reported", "IUU")) |>
       #Selecting area of interest
-      filter(fao_area == fao_id) |> 
+      filter(fao_area == fao_id & Year <= 2010) |> 
       # catch is in tonnes. This was checked in "FishingEffort" project
       mutate(catch_tonnes = Reported+IUU) |> 
       group_by(Year, fao_area) |> 
