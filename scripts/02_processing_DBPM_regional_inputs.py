@@ -41,9 +41,19 @@ for fao in fao_code:
             f_out = os.path.join(gfdl_out, f_out)
             #Apply function
             if fao in [18, 61, 71, 81, 88]:
-                uf.extract_gfdl(f, mask, f_out, cross_dateline = True)
+                cross_dateline = True
             else:
-                uf.extract_gfdl(f, mask, f_out, cross_dateline = False)
+                cross_dateline = False
+            if 'monthly' in f:
+                loess_smooth = True
+                weighted_search = '_monthly-smoothed_'
+                weighted_fn = '-smoothed'
+            else:
+                loess_smooth = False
+                weighted_search = '_monthly_'
+                weighted_fn = ''
+            uf.extract_gfdl(f, mask, f_out, cross_dateline = cross_dateline,
+                            loess_smooth = loess_smooth)
     
         #Load area of grid cell to be used as weights
         weights = xr.open_zarr(glob(os.path.join(gfdl_out, '*area*'))[0]).cellareao
@@ -52,43 +62,44 @@ for fao in fao_code:
         
         region_int = reg.replace('-', ' ').upper()
         
-        weighted_obs_df = uf.weighted_mean_timestep(
-            glob(os.path.join(gfdl_out, '*obsclim*')), weights, region_int)
+        obs_fn = (glob(os.path.join(gfdl_out, f'*gfdl*obsclim*{weighted_search}*'))+
+                  glob(os.path.join(gfdl_out, f'*obsclim_deptho*')))
+        weighted_obs_df = uf.weighted_mean_timestep(obs_fn, weights, region_int)
         
-        weighted_ctrl_df = uf.weighted_mean_timestep(
-            glob(os.path.join(gfdl_out, '*ctrlclim*')), weights, region_int)
+        ctrl_fn = (glob(os.path.join(gfdl_out, f'gfdl*ctrlclim*{weighted_search}*'))+ 
+                   glob(os.path.join(gfdl_out, f'*ctrlclim_deptho*')))
+        weighted_ctrl_df = uf.weighted_mean_timestep(ctrl_fn, weights, region_int)
         
-        weighted_spinup_df = uf.weighted_mean_timestep(
-            glob(os.path.join(gfdl_out, '*spinup*')), weights, region_int)
+        spinup_fn = (glob(os.path.join(gfdl_out, f'gfdl*spinup*{weighted_search}*'))+
+                     glob(os.path.join(gfdl_out, f'*ctrlclim_deptho*')))
+        weighted_spinup_df = uf.weighted_mean_timestep(spinup_fn, weights, region_int)
         
-        weighted_stable_spin_df = uf.weighted_mean_timestep(
-            glob(os.path.join(gfdl_out, '*stable-spin*')), weights, region_int)
+        stable_fn = (glob(os.path.join(gfdl_out, f'*gfdl*stable-spin*{weighted_search}*'))+
+                     glob(os.path.join(gfdl_out, f'*ctrlclim_deptho*')))
+        weighted_stable_spin_df = uf.weighted_mean_timestep(stable_fn, weights, region_int)
         
-        #Adding depth from ctrlclim
-        [depth] = weighted_ctrl_df.depth_m.unique()
-        weighted_spinup_df['depth_m'] = depth
-        weighted_stable_spin_df['depth_m'] = depth
-        
+        #Defining output folder
         gfdl_out = f'/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs/{reg}/monthly_weighted/{res}'
         os.makedirs(gfdl_out, exist_ok = True)
-        
+
+        #Saving data
         weighted_obs_df.to_parquet(
             os.path.join(gfdl_out, 
-                         f'obsclim_dbpm_clim-inputs_{reg}_1961-2010.parquet'), 
+                         f'obsclim_dbpm_clim-inputs{weighted_fn}_{reg}_1961-2010.parquet'), 
             index = False)
         
         weighted_ctrl_df.to_parquet(
             os.path.join(gfdl_out,
-                         f'ctrlclim_dbpm_clim-inputs_{reg}_1961-2010.parquet'), 
+                         f'ctrlclim_dbpm_clim-inputs{weighted_fn}_{reg}_1961-2010.parquet'), 
             index = False)
         
         weighted_spinup_df.to_parquet(
             os.path.join(gfdl_out,
-                         f'spinup_dbpm_clim-inputs_{reg}_1841-1960.parquet'), 
+                         f'spinup_dbpm_clim-inputs{weighted_fn}_{reg}_1841-1960.parquet'), 
             index = False)
         
         weighted_stable_spin_df.to_parquet(
             os.path.join(gfdl_out, 
-                         f'stable-spin_dbpm_clim-inputs_{reg}_1741-1840.parquet'), 
+                         f'stable-spin_dbpm_clim-inputs{weighted_fn}_{reg}_1741-1840.parquet'), 
             index = False)
     

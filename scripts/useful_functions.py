@@ -12,6 +12,7 @@ import os
 from glob import glob
 import pandas as pd
 import json
+from statsmodels.nonparametric.smoothers_lowess import lowess
 
 
 #Transforming netCDF files to zarr
@@ -26,7 +27,7 @@ def netcdf_to_zarr(file_path, path_out):
     '''
 
     #Loading and rechunking data
-    da = xr.open_dataarray(file_path).chunk({'lat': '50MB', 'lon': '50MB'})
+    da = xr.open_dataarray(file_path, chunks = {'lat': '50MB', 'lon': '50MB'})
 
     #Change date format
     try:
@@ -39,17 +40,53 @@ def netcdf_to_zarr(file_path, path_out):
     da.to_zarr(path_out, consolidated = True, mode = 'w')
 
 
+# Applying LOESS smoothing to DBPM input data
+def loess_xarray(da, time_dim, **kwargs):
+    '''
+    Inputs:
+    - da (Data Array) Three dimensional xarray data array (time, lat, lon) to be smoothed.
+    - time_dim (Data Array) Time dimension from "da" input.
+    **Optional**: 
+    - frac (numeric) Proportion of timesteps to be used in data smoothing. If not provided,
+    it defaults to 0.5
+
+    Outputs:
+    smooth (1D numpy array) Containing smoothed "da" values.
+    '''
+    # If "frac" is not provided, default to 0.5
+    if kwargs.get('frac') is not None:
+        frac = kwargs['frac']
+    else:
+        frac = 0.5
+
+    #Turn time_sim and da to numpy arrays
+    data_vals = np.asarray(da)
+    time_vals = np.asarray(time_dim)
+
+    #Applying LOESS smoother - Keep only smoothed values (i.e., ignore time column)
+    smooth = lowess(data_vals, time_vals, is_sorted = True, frac = frac, it = 0, 
+                    missing = 'none')[:, 1]
+    
+    return smooth
+
+
 ## Extracting GFDL outputs for region of interest using boolean mask
-def extract_gfdl(file_path, mask, path_out, cross_dateline = False):
+def extract_gfdl(file_path, mask, path_out, cross_dateline = False, loess_smooth = False,
+                 **kwargs):
     '''
     Inputs:
     - file_path (character) File path where GFDL zarr file is located
     - mask (boolean data array) Grid cells within region of interest should be identified
     as 1.
     - path_out (character) File path where outputs should be stored as zarr files
+    - loess_smooth (boolean) Default is False. If set to True, a LOESS smooth will
+    be applied to the data along the time dimension
     - cross_dateline (boolean) Default is False. If set to True, it will convert longitudes 
     from +/-180 to 0-360 degrees before extracting data for region of interest
-
+    **Optional**: 
+    - mth_smooth (numeric) Number of timesteps to be used in data smoothing. If not
+    provided, it defaults to 4 timesteps.
+    
     Outputs:
     - None. This function saves results as zarr files in the path provided.
     '''
@@ -79,12 +116,49 @@ def extract_gfdl(file_path, mask, path_out, cross_dateline = False):
     
     #Rechunking data
     if 'time' in da.dims:
-        da = da.chunk({'time': '50MB', 'lat': len(da.lat), 'lon': len(da.lon)})
+        da = da.chunk({'time': -1, 'lat': -1, 'lon': -1})
     else:
-        da = da.chunk({'lat': len(da.lat), 'lon': len(da.lon)})
+        da = da.chunk({'lat':-1, 'lon': -1})
+
+    #Applying smoothing
+    if loess_smooth:
+        # If "frac" is not provided, default to 0.5
+        if kwargs.get('mth_smooth') is not None:
+            frac = (kwargs['mth_smooth']/len(da.time))
+        else:
+            frac = (4/len(da.time))
+        # Define function being used first
+        da_smooth = xr.apply_ufunc(loess_xarray, 
+                                   # Pass arguments needed by function being applied
+                                   da, da.time, kwargs = {'frac': frac},
+                                   # Dimensions the function needs for each argument (i.e.,
+                                   # the function will be applied along the time dimension)
+                                   input_core_dims = [['time'], ['time']], 
+                                   # Dimensions of each output from the function
+                                   output_core_dims = [['time']],
+                                   # Allows function needs to applied along time dimension
+                                   # (i.e., one lat and lon at a time)
+                                   vectorize = True,
+                                   # Parallise function using Dask
+                                   dask = 'parallelized',
+                                   # Allow rechunking of data if needed
+                                   dask_gufunc_kwargs = {'allow_rechunk': True},
+                                   # Define the type of object the function will return
+                                   output_dtypes = [float]).load()
+        # Add metadata record about smoothing step
+        da_smooth.attrs['fishmip_postprocess'] = f'LOESS smooth applied to data, span = {frac}'
+        # Add variable name
+        da_smooth.name = var
+        # Rechunk data before saving
+        da_smooth = da_smooth.chunk({'time': -1, 'lat': -1, 'lon': -1})
+        # Add info about postprocessing to file name
+        path_out = path_out.replace('_monthly_', '_monthly-smoothed_')
 
     #Save results
-    da.to_zarr(path_out, consolidated = True, mode = 'w')
+    if loess_smooth:
+        da_smooth.to_zarr(path_out, consolidated = True, mode = 'w')
+    else:
+        da.to_zarr(path_out, consolidated = True, mode = 'w')
 
 
 ## Calculating area weighted means
@@ -217,10 +291,10 @@ def GetPPIntSlope(file_paths, mmin = 10**(-14.25), mmid = 10**(-10.184),
     '''
     
     #load large phytoplankton
-    lphy = xr.open_zarr([f for f in file_paths if '_lphy_' in f or '_lphy-capped' in f][0])['lphy']
+    lphy = xr.open_zarr([f for f in file_paths if '_lphy_' in f][0])['lphy']
     
     #Load small phytoplankton
-    sphy = xr.open_zarr([f for f in file_paths if '_sphy_' in f or '_sphy-capped' in f][0])['sphy']
+    sphy = xr.open_zarr([f for f in file_paths if '_sphy_' in f][0])['sphy']
     
     #Convert sphy and lphy from mol C / m^3 to g C / m^3
     sphy = sphy*12.0107
@@ -508,7 +582,10 @@ def effort_calculation(predators, detritivores, effort, depth, size_bin_vals,
 
     # Adjusting time stamp
     new_effort['time'] = [effort.time.values]
-    new_effort = new_effort.transpose('time', 'lat', 'lon')
+    try:
+        new_effort = new_effort.transpose('time', 'lat', 'lon')
+    except:
+        pass
     #Adding name
     new_effort.name = 'effort'
 
@@ -636,7 +713,7 @@ def loading_dbpm_biomass_inputs(data_folder, init_time = None):
 
 # Loading initialising values for gridded DBPM biomass ------
 def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None, fishing = True,
-                                capped = False):
+                                smoothed = False):
     '''
     Inputs:
     - gridded_esm (character) Full path to folder where processed DBPM inputs are stored
@@ -644,45 +721,45 @@ def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None, fishing = True
     DBPM runs. If set to None, DBPM is run from the beginning
     - fishing (boolean) Default is True. It indicates whether or not fishing effort 
     should be included in the dynamic inputs dataset
-    - capped (boolean) Default is None. It indicates if "capped" inputs should be
+    - smoothed (boolean) Default is None. It indicates if "smoothed" inputs should be
     used in the DBPM run.
 
     Outputs:
     - ds_dynamic (xarray Dataset) Contains dynamic gridded inputs needed to run DBPM
     '''
 
-    if capped:
-        cap_search = '-capped'
+    if smoothed:
+        fn_search = '_monthly-smoothed_'
     else:
-        cap_search = ''
+        fn_search = '_monthly_'
         
     #Load data
     [ui0_search] = glob(os.path.join(gridded_folder, 
-                                   f'ui0{cap_search}_spinup_obsclim*'))
+                                   f'ui0_spinup_obsclim*{fn_search}*'))
     ui0 = xr.open_zarr(ui0_search, chunks = {'time': -1, 'lon': -1, 
                                              'lat': -1})['ui0']
 
     slope_search = [f for f in glob(
-        os.path.join(gridded_folder, f'*_slope{cap_search}_*')) 
+        os.path.join(gridded_folder, f'*_slope_*{fn_search}*')) 
                     if 'ctrlclim' not in f]
     slope = xr.open_mfdataset(
         slope_search, engine = 'zarr', 
         parallel = True)['slope'].chunk({'time': -1, 'lon': -1, 'lat': -1})
     
-    [pel_temp_search] = glob(os.path.join(gridded_folder, 
-                                        'pel-temp-eff_spinup_obsclim*'))
+    [pel_temp_search] = glob(os.path.join(
+        gridded_folder, f'pel-temp-eff_spinup_obsclim*{fn_search}*'))
     pel_tempeffect = xr.open_zarr(
         pel_temp_search, chunks = {'time': -1, 'lon': -1, 
                                    'lat': -1})['pel_temp_eff']
     
-    [ben_temp_search] = glob(os.path.join(gridded_folder, 
-                                        'ben-temp-eff_spinup_obsclim*'))
+    [ben_temp_search] = glob(os.path.join(
+        gridded_folder, f'ben-temp-eff_spinup_obsclim*{fn_search}*'))
     ben_tempeffect = xr.open_zarr(
         ben_temp_search, chunks = {'time': -1, 'lon': -1, 
                                    'lat': -1})['ben_temp_eff']
 
     sinking_rate_search = [f for f in glob(
-        os.path.join(gridded_folder, f'*_er{cap_search}_*')) 
+        os.path.join(gridded_folder, f'*_er_*{fn_search}*')) 
                     if 'ctrlclim' not in f]
     sinking_rate = xr.open_mfdataset(
         sinking_rate_search, engine = 'zarr', 
@@ -806,7 +883,10 @@ def feeding_satiation_rates(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
         print('the "group" parameter must be "predators", "detritivores", or "detritus"')
 
     #Reorganise output dimensions
-    feed_sat_rates = feed_sat_rates.transpose('time', 'size_class', 'lat', 'lon')
+    try:
+        feed_sat_rates = feed_sat_rates.transpose('time', 'size_class', 'lat', 'lon')
+    except:
+        feed_sat_rates = feed_sat_rates.transpose('time', 'size_class')
     #Apply spatial mask
     feed_sat_rates = feed_sat_rates.where(dbpm_fixed_inputs['mask'])
     #Ensure correct time is applied
@@ -893,7 +973,10 @@ def mortality_calc(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
         print('the "group" parameter must be either "predators" or "detritivores"')
         
     #Reorganise dimensions
-    mortality_terms = mortality_terms.transpose('time', 'size_class', 'lat', 'lon')
+    try:
+        mortality_terms = mortality_terms.transpose('time', 'size_class', 'lat', 'lon')
+    except:
+        mortality_terms = mortality_terms.transpose('time', 'size_class')
     #Apply spatial mask
     mortality_terms = mortality_terms.where(dbpm_fixed_inputs['mask'])
     #Ensure correct time is applied
@@ -927,7 +1010,10 @@ def growth_rates_calc(gridded_params, feed_sat_rates, dbpm_fixed_inputs):
                                             'GG_v': growth_int_det})
 
     #Reorganise dimensions
-    growth_reprod = growth_reprod.transpose('time', 'size_class', 'lat', 'lon')
+    try:
+        growth_reprod = growth_reprod.transpose('time', 'size_class', 'lat', 'lon')
+    except:
+        growth_reprod = growth_reprod.transpose('time', 'size_class')
     #Apply spatial mask
     growth_reprod = growth_reprod.where(dbpm_fixed_inputs['mask'])
     #Ensure correct time is applied
@@ -986,7 +1072,10 @@ def reproduction_rates(gridded_params, feed_sat_rates, dbpm_fixed_inputs, group)
         print('the "group" parameter must be either "predators" or "detritivores"')
 
     #Reorganise dimensions
-    reprod_rates = reprod_rates.transpose('time', 'size_class', 'lat', 'lon')
+    try:
+        reprod_rates = reprod_rates.transpose('time', 'size_class', 'lat', 'lon')
+    except:
+        reprod_rates = reprod_rates.transpose('time', 'size_class')
     #Apply spatial mask
     reprod_rates = reprod_rates.where(dbpm_fixed_inputs['mask'])
     #Ensure correct time is applied
@@ -1021,7 +1110,10 @@ def detritus_output(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     # Adding variable name
     output_w.name = 'output_w'
     #Reorganise dimensions
-    output_w = output_w.transpose('time', 'lat', 'lon')
+    try:
+        output_w = output_w.transpose('time', 'lat', 'lon')
+    except:
+        pass
     #Apply spatial mask
     output_w = output_w.where(dbpm_fixed_inputs['mask'])
     
@@ -1057,7 +1149,10 @@ def defecation_predators(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     # Adding variable name
     defbypred.name = 'defbypred'
     #Reorganise dimensions
-    defbypred = defbypred.transpose('time', 'lat', 'lon')
+    try:
+        defbypred = defbypred.transpose('time', 'lat', 'lon')
+    except:
+        pass
     #Apply spatial mask
     defbypred = defbypred.where(dbpm_fixed_inputs['mask'])
     
@@ -1130,7 +1225,10 @@ def detritus_pool(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     det_pool = xr.Dataset(data_vars = {'input_w': input_w, 
                                        'dW': dW})
     #Reorganise dimensions
-    det_pool = det_pool.transpose('time', 'lat', 'lon')
+    try:
+        det_pool = det_pool.transpose('time', 'lat', 'lon')
+    except:
+        pass
     #Apply spatial mask
     det_pool = det_pool.where(dbpm_fixed_inputs['mask'])
     
@@ -1203,7 +1301,10 @@ def biomass_density(gridded_params, dbpm_fixed_inputs, growth_rate,
 
     density = xr.Dataset(data_vars = {'Ai': Ai, 'Bi': Bi, 'Si': Si})
     #Reorganise dimensions
-    density = density.transpose('time', 'size_class', 'lat', 'lon')
+    try:
+        density = density.transpose('time', 'size_class', 'lat', 'lon')
+    except:
+        density = density.transpose('time', 'size_class')
     #Apply spatial mask
     density = density.where(dbpm_fixed_inputs['mask'])
 
@@ -1273,7 +1374,10 @@ def tot_biomass_calc(gridded_params, dbpm_fixed_inputs, group, biomass_current,
     #Adding name to data array
     biomass_next.name = group
     #Reorganise dimensions
-    biomass_next = biomass_next.transpose('time', 'size_class', 'lat', 'lon')
+    try:
+        biomass_next = biomass_next.transpose('time', 'size_class', 'lat', 'lon')
+    except:
+        biomass_next = biomass_next.transpose('time', 'size_class')
     #Apply spatial mask
     biomass_next = biomass_next.where(dbpm_fixed_inputs['mask'])
         

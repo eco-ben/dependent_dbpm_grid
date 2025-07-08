@@ -13,6 +13,16 @@ import useful_functions as uf
 base_folder = '/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs'
 regions = [f for f in os.listdir(base_folder) if 'fao' in f]
 resolutions = ['1deg', '025deg']
+# Set to TRUE to use 'smoothed' instead of original GFDL outputs 
+# as DBPM forcings
+smoothed = True
+
+# Set search keywords to find correct input files - Also used to 
+# name processed inputs
+if smoothed:
+  fn_search = '_monthly-smoothed_'
+else:
+  fn_search = '_monthly_'
 
 # Looping through all regions and resolutions
 for reg in regions:
@@ -69,31 +79,31 @@ for reg in regions:
             out_folder, '*obsclim_deptho_*'))[0])['deptho']
         #Loading intercept data for stable spinup period
         int_phy_zoo_stable_spin = xr.open_zarr(glob(os.path.join(
-            out_folder, '*stable-spin_intercept_*'))[0])['intercept']
+            out_folder, f'*stable-spin_intercept_*{fn_search}*'))[0])['intercept']
         #Loading intercept data for spinup period
         int_phy_zoo_spinup = xr.open_zarr(glob(os.path.join(
-            out_folder, '*spinup_intercept_*'))[0])['intercept']
+            out_folder, f'*spinup_intercept_*{fn_search}*'))[0])['intercept']
         #Loading intercept data for model period 
         int_phy_zoo  = xr.open_zarr(glob(os.path.join(
-            out_folder, '*obsclim_intercept_*'))[0])['intercept']
+            out_folder, f'*obsclim_intercept_*{fn_search}*'))[0])['intercept']
         #Loading sea surface temperature data for stable spinup period
         sea_surf_temp_stable_spin = xr.open_zarr(glob(os.path.join(
-            out_folder, '*stable-spin_tos_*'))[0])['tos']
+            out_folder, f'*stable-spin_tos_*{fn_search}*'))[0])['tos']
         #Loading sea surface temperature data for spinup period
         sea_surf_temp_spinup = xr.open_zarr(glob(os.path.join(
-            out_folder, '*spinup_tos_*'))[0])['tos']
+            out_folder, f'*spinup_tos_*{fn_search}*'))[0])['tos']
         #Loading sea surface temperature data for model period
         sea_surf_temp  = xr.open_zarr(glob(os.path.join(
-            out_folder, '*obsclim_tos_*'))[0])['tos']
+            out_folder, f'*obsclim_tos_*{fn_search}*'))[0])['tos']
         #Loading bottom ocean temperature data for spinup period
         sea_floor_temp_stable_spin = xr.open_zarr(glob(os.path.join(
-            out_folder, '*stable-spin_tob_*'))[0])['tob']
+            out_folder, f'*stable-spin_tob_*{fn_search}*'))[0])['tob']
         #Loading bottom ocean temperature data for spinup period
         sea_floor_temp_spinup = xr.open_zarr(glob(os.path.join(
-            out_folder, '*spinup_tob_*'))[0])['tob']
+            out_folder, f'*spinup_tob_*{fn_search}*'))[0])['tob']
         #Loading bottom ocean temperature data for model period
         sea_floor_temp  = xr.open_zarr(glob(os.path.join(
-            out_folder, '*obsclim_tob_*'))[0])['tob']
+            out_folder, f'*obsclim_tob_*{fn_search}*'))[0])['tob']
 
         # Timesteps for stable spinup period
         spinup_period = pd.date_range('1741-01-01', end = '1840-12-31', 
@@ -220,7 +230,7 @@ for reg in regions:
         ui0_out.name = 'ui0'
         ui0_out.to_zarr(os.path.join(
             out_folder, 
-            f'ui0_spinup_obsclim_{res_arc}_{reg}_monthly_1741_2010.zarr/'),
+            f'ui0_spinup_obsclim_{res_arc}_{reg}{fn_search}1741_2010.zarr/'),
                     consolidated = True, mode = 'w')
 
         # Initial biomass ----
@@ -366,7 +376,7 @@ for reg in regions:
                                                    'time': -1}).load()
         pel_tempeffect_out.to_zarr(os.path.join(
             out_folder, 
-            f'pel-temp-eff_spinup_obsclim_{res_arc}_{reg}_monthly_1741_2010.zarr/'),
+            f'pel-temp-eff_spinup_obsclim_{res_arc}_{reg}{fn_search}1741_2010.zarr/'),
             consolidated = True, mode = 'w')
 
         #Benthics
@@ -380,7 +390,7 @@ for reg in regions:
                                                    'time': -1}).load()
         ben_tempeffect_out.to_zarr(os.path.join(
             out_folder, 
-            f'ben-temp-eff_spinup_obsclim_{res_arc}_{reg}_monthly_1741_2010.zarr/'),
+            f'ben-temp-eff_spinup_obsclim_{res_arc}_{reg}{fn_search}1741_2010.zarr/'),
             consolidated = True, mode = 'w')
 
 

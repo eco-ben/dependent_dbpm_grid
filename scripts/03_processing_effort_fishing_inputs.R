@@ -18,6 +18,16 @@ fao <- list.dirs(base_folder, recursive = F, full.names = F) |>
 # Resolution
 resolutions <- c("025deg", "1deg")
 
+# Setting "smoothed" to TRUE will use 'smoothed' instead of original GFDL 
+# outputs to force DBPM
+smoothed <- TRUE
+if(smoothed){
+  fn_search <- "-smoothed"
+}else{
+  fn_search <- ""
+}
+
+# Applying workflow to all regions
 for(f in fao){
   fao_id <- as.numeric(str_extract(f, "[0-9]{2}"))
   for(res in resolutions){
@@ -33,6 +43,7 @@ for(f in fao){
     # saving results
     clim_forcing_file <- list.files(forcing_folder, pattern = "obsclim|spinup",
                                     full.names = T) |>
+      str_subset(paste0("inputs", fn_search, "_fao")) |> 
       map(\(x) read_parquet(x)) |> 
       bind_rows() |> 
       arrange(time) |> 
@@ -67,7 +78,7 @@ for(f in fao){
     # Loading catches data ----------------------------------------------------
     #From Watson et al 2018
     catch_watson <- file.path(fishing_folder, "DKRZ_EffortFiles",
-                              "catch-validation_isimip3a_histsoc_1850_2004.csv") |> 
+                              "catch_histsoc_1869_2017_EEZ_addFAO.csv") |> 
       read_csv_arrow(col_select = c("Year", "fao_area", "Reported", "IUU")) |>
       #Selecting area of interest
       filter(fao_area == fao_id) |> 
@@ -153,8 +164,8 @@ for(f in fao){
     #Saving summarised catch and effort data
     DBPM_effort_catch_input |> 
       write_parquet(file.path(forcing_folder, 
-                              paste0("dbpm_effort-catch-inputs_", f, 
-                                     ".parquet")))
+                              paste0("dbpm_effort-catch-inputs", fn_search, "_",
+                                     f, ".parquet")))
     
     #Removing individual data frames
     rm(effort_data, catch_data)
@@ -191,15 +202,16 @@ for(f in fao){
       dir.create(folder_out, recursive = T)
     }
     
-    #Saving result that matches previous work
-    ggsave(file.path(folder_out, paste0("effort_", f, "_", res, ".pdf")), 
-           device = "pdf", dpi = 300)
-  
+    #Saving results - only save once per FAO region
+    fout <- file.path(folder_out, paste0("effort_", f, ".pdf"))
+    if(!file.exists(fout)){
+      ggsave(fout, device = "pdf", dpi = 300)
+    }
   
     ## Saving catch and effort, and inputs data -------------------------------
     forcing_file |> 
       write_parquet(file.path(forcing_folder, 
-                              paste0("dbpm_clim-fish-inputs_", f, 
+                              paste0("dbpm_clim-fish-inputs", fn_search, "_", f, 
                                      "_1841-2010.parquet")))
   }
 }
