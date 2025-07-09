@@ -110,9 +110,9 @@ def extract_gfdl(file_path, mask, path_out, cross_dateline = False, loess_smooth
         da = da.where(mask == 1)
         da['lon'] = da.lon%360
         da = da.sortby('lon')
-        da = da.dropna(dim = 'lon', how = 'all').dropna(dim = 'lat', how = 'all')
+        da = da.dropna(dim = 'lon', how = 'all').dropna(dim = 'lat', how = 'all').load()
     else:
-        da = da.where(mask == 1, drop = True)
+        da = da.where(mask == 1, drop = True).load()
     
     #Rechunking data
     if 'time' in da.dims:
