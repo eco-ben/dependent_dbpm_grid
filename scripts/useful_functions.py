@@ -59,12 +59,18 @@ def loess_xarray(da, time_dim, **kwargs):
     else:
         frac = 0.5
 
+    # If "it" is not provided, default to 0
+    if kwargs.get('it') is not None:
+        it = kwargs['it']
+    else:
+        it = 0
+
     #Turn time_sim and da to numpy arrays
     data_vals = np.asarray(da)
     time_vals = np.asarray(time_dim)
 
     #Applying LOESS smoother - Keep only smoothed values (i.e., ignore time column)
-    smooth = lowess(data_vals, time_vals, is_sorted = True, frac = frac, it = 0, 
+    smooth = lowess(data_vals, time_vals, is_sorted = True, frac = frac, it = it, 
                     missing = 'none')[:, 1]
     return smooth
 
@@ -92,10 +98,17 @@ def smoothing_loess(file_path, path_out, **kwargs):
         frac = (kwargs['mth_smooth']/len(da.time))
     else:
         frac = (4/len(da.time))
+    
+    # If "it" is not provided, default to 0
+    if kwargs.get('it') is not None:
+        it = kwargs['it']
+    else:
+        it = 0
+    
     # Define function being used first
     da_smooth = xr.apply_ufunc(loess_xarray, 
                                # Pass arguments needed by function being applied
-                               da, da.time, kwargs = {'frac': frac},
+                               da, da.time, kwargs = {'frac': frac, 'it': it},
                                # Dimensions the function needs for each argument (i.e.,
                                # the function will be applied along the time dimension)
                                input_core_dims = [['time'], ['time']], 
@@ -112,7 +125,7 @@ def smoothing_loess(file_path, path_out, **kwargs):
                                output_dtypes = [float]).load()
     # Add metadata and record smoothing step
     da_smooth = da_smooth.assign_attrs(da.attrs)
-    da_smooth.attrs['fishmip_postprocess'] = f'LOESS smooth applied to data, span = {frac}'
+    da_smooth.attrs['fishmip_postprocess'] = f'LOESS smooth applied to data, span = {frac}, it = {it}'
     # Add variable name
     da_smooth.name = var
     # Save results
