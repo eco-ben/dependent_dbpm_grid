@@ -4,28 +4,25 @@
 import os
 import useful_functions as uf
 import xarray as xr
-import numpy as np
-import os
 from glob import glob
-import shutil
 
 # Defining base folder
 base_dir = '/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs/'
 # Getting list of FAO regions
-fao_code = [f for f in os.listdir(base_dir) if 'fao' in f]
+fao_code = ['fao-31']#[f for f in os.listdir(base_dir) if 'fao' in f]
 # Define resolutions
 # resolutions = ['1deg', '025deg']
-resolutions = ['025deg']
+resolutions = ['1deg']
 # Process smoothed inputs?
 smoothed = True
 
 for fao, res in zip(fao_code, resolutions):
     if not smoothed:
-        gridded_folder = os.path.join(base_dir, fao, 'gridded', res, '*')
+        gridded_folder = os.path.join(base_dir, fao, 'gridded', res)
         weighted_fn = ''
     else:
-        gridded_folder =os.path.join(base_dir, fao, 'gridded-smoothed',
-                                      res, '*')
+        gridded_folder = os.path.join(base_dir, fao, 'gridded-smoothed',
+                                      res)
         weighted_fn = '-smoothed'
 
     #Extracting data for FAO area
@@ -36,19 +33,17 @@ for fao, res in zip(fao_code, resolutions):
     
     region_int = fao.replace('-', ' ').upper()
     
-    obs_fn = (glob(os.path.join(gridded_folder, f'*gfdl*obsclim*'))+
-              glob(os.path.join(gridded_folder, f'*obsclim_deptho*')))
+    obs_fn = glob(os.path.join(gridded_folder, f'gfdl*obsclim*'))
     weighted_obs_df = uf.weighted_mean_timestep(obs_fn, weights, region_int)
     
-    ctrl_fn = (glob(os.path.join(gridded_folder, f'gfdl*ctrlclim*'))+ 
-               glob(os.path.join(gridded_folder, f'*ctrlclim_deptho*')))
+    ctrl_fn = glob(os.path.join(gridded_folder, f'gfdl*ctrlclim*'))
     weighted_ctrl_df = uf.weighted_mean_timestep(ctrl_fn, weights, region_int)
     
     spinup_fn = (glob(os.path.join(gridded_folder, f'gfdl*spinup*'))+
                  glob(os.path.join(gridded_folder, f'*ctrlclim_deptho*')))
     weighted_spinup_df = uf.weighted_mean_timestep(spinup_fn, weights, region_int)
     
-    stable_fn = (glob(os.path.join(gridded_folder, f'*gfdl*stable-spin*'))+
+    stable_fn = (glob(os.path.join(gridded_folder, f'gfdl*stable-spin*'))+
                  glob(os.path.join(gridded_folder, f'*ctrlclim_deptho*')))
     weighted_stable_spin_df = uf.weighted_mean_timestep(stable_fn, weights, region_int)
 
