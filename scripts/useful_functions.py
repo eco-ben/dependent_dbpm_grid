@@ -40,7 +40,7 @@ def netcdf_to_zarr(file_path, path_out):
     da.to_zarr(path_out, consolidated = True, mode = 'w')
 
 
-# Applying LOESS smoothing to DBPM input data
+# Apply LOESS smoothing to gridded data
 def loess_xarray(da, time_dim, **kwargs):
     '''
     Inputs:
@@ -66,26 +66,69 @@ def loess_xarray(da, time_dim, **kwargs):
     #Applying LOESS smoother - Keep only smoothed values (i.e., ignore time column)
     smooth = lowess(data_vals, time_vals, is_sorted = True, frac = frac, it = 0, 
                     missing = 'none')[:, 1]
-    
     return smooth
 
 
+# Smoothing DBPM inputs using LOESS
+def smoothing_loess(file_path, path_out, **kwargs):
+    '''
+    - file_path (character) File path where GFDL zarr file is located
+    - path_out (character) File path where outputs should be stored as zarr files
+    **Optional**: 
+    - mth_smooth (numeric) Number of timesteps to be used in data smoothing. If not
+    provided, it defaults to 4 timesteps.
+
+    Outputs:
+    - None. This function saves results as zarr files in the path provided.    
+    '''
+    # Loading data
+    da = xr.open_zarr(file_path)
+    #Getting name of variable contained in dataset
+    [var] = list(da.keys())
+    da = da[var]
+    
+    # If "frac" is not provided, default to 0.5
+    if kwargs.get('mth_smooth') is not None:
+        frac = (kwargs['mth_smooth']/len(da.time))
+    else:
+        frac = (4/len(da.time))
+    # Define function being used first
+    da_smooth = xr.apply_ufunc(loess_xarray, 
+                               # Pass arguments needed by function being applied
+                               da, da.time, kwargs = {'frac': frac},
+                               # Dimensions the function needs for each argument (i.e.,
+                               # the function will be applied along the time dimension)
+                               input_core_dims = [['time'], ['time']], 
+                               # Dimensions of each output from the function
+                               output_core_dims = [['time']],
+                               # Allows function needs to applied along time dimension
+                               # (i.e., one lat and lon at a time)
+                               vectorize = True,
+                               # Parallise function using Dask
+                               dask = 'parallelized',
+                               # Allow rechunking of data if needed
+                               dask_gufunc_kwargs = {'allow_rechunk': True},
+                               # Define the type of object the function will return
+                               output_dtypes = [float]).load()
+    # Add metadata and record smoothing step
+    da_smooth = da_smooth.assign_attrs(da.attrs)
+    da_smooth.attrs['fishmip_postprocess'] = f'LOESS smooth applied to data, span = {frac}'
+    # Add variable name
+    da_smooth.name = var
+    # Save results
+    da_smooth.to_zarr(path_out, consolidated = True, mode = 'w')
+
+
 ## Extracting GFDL outputs for region of interest using boolean mask
-def extract_gfdl(file_path, mask, path_out, cross_dateline = False, loess_smooth = False,
-                 **kwargs):
+def extract_gfdl(file_path, mask, path_out, cross_dateline = False):
     '''
     Inputs:
     - file_path (character) File path where GFDL zarr file is located
     - mask (boolean data array) Grid cells within region of interest should be identified
     as 1.
     - path_out (character) File path where outputs should be stored as zarr files
-    - loess_smooth (boolean) Default is False. If set to True, a LOESS smooth will
-    be applied to the data along the time dimension
     - cross_dateline (boolean) Default is False. If set to True, it will convert longitudes 
     from +/-180 to 0-360 degrees before extracting data for region of interest
-    **Optional**: 
-    - mth_smooth (numeric) Number of timesteps to be used in data smoothing. If not
-    provided, it defaults to 4 timesteps.
     
     Outputs:
     - None. This function saves results as zarr files in the path provided.
@@ -105,12 +148,14 @@ def extract_gfdl(file_path, mask, path_out, cross_dateline = False, loess_smooth
     [var] = list(da.keys())
     da = da[var]
     
-    #Apply mask and remove rows where all grid cells are empty to reduce data array size
+    #Apply mask and remove rows where all grid cells are empty to 
+    #reduce data array size
     if cross_dateline:
         da = da.where(mask == 1)
         da['lon'] = da.lon%360
         da = da.sortby('lon')
-        da = da.dropna(dim = 'lon', how = 'all').dropna(dim = 'lat', how = 'all').load()
+        da = (da.dropna(dim = 'lon', how = 'all').
+              dropna(dim = 'lat', how = 'all')).load()
     else:
         da = da.where(mask == 1, drop = True).load()
     
@@ -119,46 +164,9 @@ def extract_gfdl(file_path, mask, path_out, cross_dateline = False, loess_smooth
         da = da.chunk({'time': -1, 'lat': -1, 'lon': -1})
     else:
         da = da.chunk({'lat':-1, 'lon': -1})
-
-    #Applying smoothing
-    if loess_smooth:
-        # If "frac" is not provided, default to 0.5
-        if kwargs.get('mth_smooth') is not None:
-            frac = (kwargs['mth_smooth']/len(da.time))
-        else:
-            frac = (4/len(da.time))
-        # Define function being used first
-        da_smooth = xr.apply_ufunc(loess_xarray, 
-                                   # Pass arguments needed by function being applied
-                                   da, da.time, kwargs = {'frac': frac},
-                                   # Dimensions the function needs for each argument (i.e.,
-                                   # the function will be applied along the time dimension)
-                                   input_core_dims = [['time'], ['time']], 
-                                   # Dimensions of each output from the function
-                                   output_core_dims = [['time']],
-                                   # Allows function needs to applied along time dimension
-                                   # (i.e., one lat and lon at a time)
-                                   vectorize = True,
-                                   # Parallise function using Dask
-                                   dask = 'parallelized',
-                                   # Allow rechunking of data if needed
-                                   dask_gufunc_kwargs = {'allow_rechunk': True},
-                                   # Define the type of object the function will return
-                                   output_dtypes = [float]).load()
-        # Add metadata record about smoothing step
-        da_smooth.attrs['fishmip_postprocess'] = f'LOESS smooth applied to data, span = {frac}'
-        # Add variable name
-        da_smooth.name = var
-        # Rechunk data before saving
-        da_smooth = da_smooth.chunk({'time': -1, 'lat': -1, 'lon': -1})
-        # Add info about postprocessing to file name
-        path_out = path_out.replace('_monthly_', '_monthly-smoothed_')
-
-    #Save results
-    if loess_smooth:
-        da_smooth.to_zarr(path_out, consolidated = True, mode = 'w')
-    else:
-        da.to_zarr(path_out, consolidated = True, mode = 'w')
+    
+    #Save subsetted data
+    da.to_zarr(path_out, consolidated = True, mode = 'w')
 
 
 ## Calculating area weighted means
