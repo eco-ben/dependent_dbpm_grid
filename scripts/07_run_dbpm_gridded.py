@@ -30,7 +30,7 @@ if __name__ == '__main__':
     ## If starting DBPM run from a specific time step ----
     # Character: Year and month from when DBPM initialisation values should be loaded
     # If starting model for the first time, it should be set to None
-    init_time = None
+    init_time = '1916-07'
 
     ## Defining input and output folders ----
     base_folder = '/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs'
