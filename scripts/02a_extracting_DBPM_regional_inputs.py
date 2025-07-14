@@ -5,7 +5,6 @@ import os
 import useful_functions as uf
 import xarray as xr
 import numpy as np
-import os
 from glob import glob
 
 # Loading mask with all FAO regions

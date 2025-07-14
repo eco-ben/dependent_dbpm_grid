@@ -3,7 +3,6 @@
 # Loading libraries
 import os
 import useful_functions as uf
-import os
 from glob import glob
 import shutil
 
