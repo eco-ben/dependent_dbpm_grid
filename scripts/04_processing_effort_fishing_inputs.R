@@ -108,9 +108,8 @@ for(f in fao){
   
     #From CCAMLR
     #Load catch data
-    catch_ccamlr <- file.path(fishing_folder, 
-                              "CCAMLR_Statistical_Bulletin_V36/catch_and_effort",
-                              "Catch.csv") |> 
+    catch_ccamlr <- file.path(fishing_folder, "CCAMLR_Statistical_Bulletin_V36",
+                              "catch_and_effort", "Catch.csv") |> 
       read_csv_arrow(col_select = c("year", "asd_code", 
                                     "greenweight_caught_tonne")) |> 
       #Merge with codes for CCAMLR regions

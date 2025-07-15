@@ -54,21 +54,21 @@ for fao, res in zip(fao_code, resolutions):
     #Saving data
     weighted_obs_df.to_parquet(
         os.path.join(gfdl_out, 
-                     f'obsclim_dbpm_clim-inputs{weighted_fn}_{reg}_1961-2010.parquet'), 
+                     f'obsclim_dbpm_clim-inputs{weighted_fn}_{fao}_1961-2010.parquet'), 
         index = False)
     
     weighted_ctrl_df.to_parquet(
         os.path.join(gfdl_out,
-                     f'ctrlclim_dbpm_clim-inputs{weighted_fn}_{reg}_1961-2010.parquet'), 
+                     f'ctrlclim_dbpm_clim-inputs{weighted_fn}_{fao}_1961-2010.parquet'), 
         index = False)
     
     weighted_spinup_df.to_parquet(
         os.path.join(gfdl_out,
-                     f'spinup_dbpm_clim-inputs{weighted_fn}_{reg}_1841-1960.parquet'), 
+                     f'spinup_dbpm_clim-inputs{weighted_fn}_{fao}_1841-1960.parquet'), 
         index = False)
     
     weighted_stable_spin_df.to_parquet(
         os.path.join(gfdl_out, 
-                     f'stable-spin_dbpm_clim-inputs{weighted_fn}_{reg}_1741-1840.parquet'), 
+                     f'stable-spin_dbpm_clim-inputs{weighted_fn}_{fao}_1741-1840.parquet'), 
         index = False)
     
