@@ -11,8 +11,7 @@ import useful_functions as uf
 
 # Defining base variables
 base_folder = '/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs'
-# regions = [f for f in os.listdir(base_folder) if 'fao' in f]
-regions = ['fao-31']
+regions = [f for f in os.listdir(base_folder) if 'fao' in f]
 # resolutions = ['1deg', '025deg']
 resolutions = ['1deg']
 # Set to TRUE to use 'smoothed' instead of original GFDL outputs 
