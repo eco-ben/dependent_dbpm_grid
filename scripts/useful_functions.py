@@ -169,14 +169,16 @@ def stl_xarray(da, **kwargs):
 
 
 # Applying STL decomposition to an xarray DataArray along the 'time' dimension
-def seasonal_decomposition(da, period, component):#, path_out):
+def seasonal_decomposition(file_path, path_out, period, component):
     '''
     - file_path (character) File path where GFDL zarr file is located
-    - period (integer) The periodicity of the time series (e.g., 12 for monthly, 365 for daily).
+    - period (integer) The periodicity of the time series (e.g., 12 for monthly, 
+    365 for daily).
     - component (character) Default is seasonal. Returns specified STL component
 
     Outputs:
-    - A new DataArray containing the specified decomposed component.  
+    - None. A new DataArray containing the original data minus the specified 
+    decomposed component is saved in the file path provided in path_out.  
     '''
     # Loading data
     da = xr.open_zarr(file_path)
@@ -199,9 +201,7 @@ def seasonal_decomposition(da, period, component):#, path_out):
     # Add variable name
     da_decomp.name = var
     # Save results
-    # da_decomp.to_zarr(path_out, consolidated = True, mode = 'w')
-    
-    return da_decomp
+    da_decomp.to_zarr(path_out, consolidated = True, mode = 'w')
 
     
 ## Extracting GFDL outputs for region of interest using boolean mask
