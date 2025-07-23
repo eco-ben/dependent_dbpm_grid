@@ -169,7 +169,7 @@ def stl_xarray(da, **kwargs):
 
 
 # Applying STL decomposition to an xarray DataArray along the 'time' dimension
-def seasonal_decomposition(file_path, period, component):
+def seasonal_decomposition(da, period, component):#, path_out):
     '''
     - file_path (character) File path where GFDL zarr file is located
     - period (integer) The periodicity of the time series (e.g., 12 for monthly, 365 for daily).
@@ -185,14 +185,23 @@ def seasonal_decomposition(file_path, period, component):
     da = da[var]
 
     # Use apply_ufunc to apply the wrapper function across spatial dimensions
-    return xr.apply_ufunc(
-        stl_xarray,
-        da, kwargs = {'period': period, 'component': component},
-        input_core_dims = [['time']], output_core_dims = [['time']],
-        dask = 'parallelized',
-        vectorize = True,
-        output_dtypes = [da.dtype],
-    ).load()
+    da_comp = xr.apply_ufunc(stl_xarray, da, 
+                             kwargs = {'period': period, 'component': component},
+                             input_core_dims = [['time']], output_core_dims = [['time']],
+                             dask = 'parallelized', vectorize = True, 
+                             output_dtypes = [da.dtype]).load()
+
+    #Remove calculated component from original data
+    da_decomp = da-da_comp
+    # Add metadata and record smoothing step
+    da_decomp = da_decomp.assign_attrs(da.attrs)
+    da_decomp.attrs['fishmip_postprocess'] = f'Original data minus {component} component'
+    # Add variable name
+    da_decomp.name = var
+    # Save results
+    # da_decomp.to_zarr(path_out, consolidated = True, mode = 'w')
+    
+    return da_decomp
 
     
 ## Extracting GFDL outputs for region of interest using boolean mask
@@ -1590,15 +1599,6 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     #If values are negative, assign a value of 0
     if force_positive:
         detritus = xr.where(detritus < 0, 0, detritus)
-        # while detritus.min() < 0:
-        #     neg_coords = detritus.argmin(dim = ['lat', 'lon'])
-        #     neg_replace = (xr.where(detritus == detritus.min(), np.nan, detritus).
-        #                    isel(lat = slice((neg_coords['lat'].values.item()-1),
-        #                                     (neg_coords['lat'].values.item()+2)),
-        #                         lon = slice((neg_coords['lon'].values.item()-1),
-        #                                     (neg_coords['lon'].values.item()+2))).
-        #                   min())
-        #     detritus = xr.where(detritus == detritus.min(), neg_replace, detritus)
         
     # Updating timestamp (results for next time step)
     detritus['time'] = [dbpm_time]
