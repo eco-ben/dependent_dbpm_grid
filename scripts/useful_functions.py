@@ -13,7 +13,7 @@ from glob import glob
 import pandas as pd
 import json
 from statsmodels.nonparametric.smoothers_lowess import lowess
-
+from statsmodels.tsa.seasonal import STL
 
 #Transforming netCDF files to zarr
 def netcdf_to_zarr(file_path, path_out):
@@ -106,23 +106,24 @@ def smoothing_loess(file_path, path_out, **kwargs):
         it = 0
     
     # Define function being used first
-    da_smooth = xr.apply_ufunc(loess_xarray, 
-                               # Pass arguments needed by function being applied
-                               da, da.time, kwargs = {'frac': frac, 'it': it},
-                               # Dimensions the function needs for each argument (i.e.,
-                               # the function will be applied along the time dimension)
-                               input_core_dims = [['time'], ['time']], 
-                               # Dimensions of each output from the function
-                               output_core_dims = [['time']],
-                               # Allows function needs to applied along time dimension
-                               # (i.e., one lat and lon at a time)
-                               vectorize = True,
-                               # Parallise function using Dask
-                               dask = 'parallelized',
-                               # Allow rechunking of data if needed
-                               dask_gufunc_kwargs = {'allow_rechunk': True},
-                               # Define the type of object the function will return
-                               output_dtypes = [float]).load()
+    da_smooth = xr.apply_ufunc(
+        loess_xarray, 
+        # Pass arguments needed by function being applied
+        da, da.time, kwargs = {'frac': frac, 'it': it},
+        # Dimensions the function needs for each argument (i.e.,
+        # the function will be applied along the time dimension)
+        input_core_dims = [['time'], ['time']], 
+        # Dimensions of each output from the function
+        output_core_dims = [['time']],
+        # Allows function needs to applied along time dimension
+        # (i.e., one lat and lon at a time)
+        vectorize = True,
+        # Parallise function using Dask
+        dask = 'parallelized',
+        # Allow rechunking of data if needed
+        dask_gufunc_kwargs = {'allow_rechunk': True},
+        # Define the type of object the function will return
+        output_dtypes = [float]).load()
     # Add metadata and record smoothing step
     da_smooth = da_smooth.assign_attrs(da.attrs)
     da_smooth.attrs['fishmip_postprocess'] = f'LOESS smooth applied to data, span = {frac}, it = {it}'
@@ -132,6 +133,68 @@ def smoothing_loess(file_path, path_out, **kwargs):
     da_smooth.to_zarr(path_out, consolidated = True, mode = 'w')
 
 
+# Apply seasonal trend decomposition using LOESS (STL) to gridded data
+def stl_xarray(da, **kwargs):
+    '''
+    Inputs:
+    - da (Data Array) - 1 dimensional vector from a data array
+    **Optional**
+    - period (integer) - Default is 12 (annual). The periodicity of the time series
+    (e.g., 12 for monthly, 365 for daily).
+    - component (character) - Default is seasonal. Returns specified STL component
+
+    Outputs:
+    res - Specified STL component
+    '''
+    if kwargs.get('period') is not None:
+        period = kwargs['period']
+    else:
+        period = 12
+
+    if kwargs.get('component') is not None:
+        component = kwargs['component']
+    else:
+        component = 'seasonal'
+    
+    data_vals = np.asarray(da)
+    res = STL(data_vals, period = period).fit()
+    if component == 'trend':
+        return res.trend
+    elif component == 'seasonal':
+        return res.seasonal
+    elif component == 'resid':
+        return res.resid
+    else:
+        raise ValueError("component must be 'trend', 'seasonal', or 'resid'")
+
+
+# Applying STL decomposition to an xarray DataArray along the 'time' dimension
+def seasonal_decomposition(file_path, period, component):
+    '''
+    - file_path (character) File path where GFDL zarr file is located
+    - period (integer) The periodicity of the time series (e.g., 12 for monthly, 365 for daily).
+    - component (character) Default is seasonal. Returns specified STL component
+
+    Outputs:
+    - A new DataArray containing the specified decomposed component.  
+    '''
+    # Loading data
+    da = xr.open_zarr(file_path)
+    #Getting name of variable contained in dataset
+    [var] = list(da.keys())
+    da = da[var]
+
+    # Use apply_ufunc to apply the wrapper function across spatial dimensions
+    return xr.apply_ufunc(
+        stl_xarray,
+        da, kwargs = {'period': period, 'component': component},
+        input_core_dims = [['time']], output_core_dims = [['time']],
+        dask = 'parallelized',
+        vectorize = True,
+        output_dtypes = [da.dtype],
+    ).load()
+
+    
 ## Extracting GFDL outputs for region of interest using boolean mask
 def extract_gfdl(file_path, mask, path_out, cross_dateline = False):
     '''
@@ -1524,6 +1587,19 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                 gridded_params['timesteps_years']).load()
     # detritus = (dbpm_init_inputs['detritus']*det_pool['dW']).load()
 
+    #If values are negative, assign a value of 0
+    if force_positive:
+        detritus = xr.where(detritus < 0, 0, detritus)
+        # while detritus.min() < 0:
+        #     neg_coords = detritus.argmin(dim = ['lat', 'lon'])
+        #     neg_replace = (xr.where(detritus == detritus.min(), np.nan, detritus).
+        #                    isel(lat = slice((neg_coords['lat'].values.item()-1),
+        #                                     (neg_coords['lat'].values.item()+2)),
+        #                         lon = slice((neg_coords['lon'].values.item()-1),
+        #                                     (neg_coords['lon'].values.item()+2))).
+        #                   min())
+        #     detritus = xr.where(detritus == detritus.min(), neg_replace, detritus)
+        
     # Updating timestamp (results for next time step)
     detritus['time'] = [dbpm_time]
     #Adding name
