@@ -9,22 +9,23 @@ from glob import glob
 # Defining base folder
 base_dir = '/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs/'
 # Getting list of FAO regions
-fao_code = ['fao-31']#[f for f in os.listdir(base_dir) if 'fao' in f]
+fao_code = ['fao-21']#[f for f in os.listdir(base_dir) if 'fao' in f]
 # Define resolutions
 # resolutions = ['1deg', '025deg']
 resolutions = ['1deg']
-# Process smoothed inputs?
-smoothed = True
+# Choose whether smoothing of inputs will be performed by LOESS (smoothed) or
+# deseasoning data (deseasoned)
+smoothing = 'deseasoned'
 
 for fao, res in zip(fao_code, resolutions):
-    if not smoothed:
-        gridded_folder = os.path.join(base_dir, fao, 'gridded', res)
-        weighted_fn = ''
+    if smoothing != None:
+        smoothing = f'-{smoothing}'
+        fn_search = '-smoothed'
     else:
-        gridded_folder = os.path.join(base_dir, fao, 'gridded-smoothed',
-                                      res)
-        weighted_fn = '-smoothed'
-
+        smoothing = ''
+        fn_search = ''
+    gridded_folder = os.path.join(base_dir, fao, f'gridded{smoothing}', res)
+    
     #Extracting data for FAO area
     #Load area of grid cell to be used as weights
     weights = xr.open_zarr(glob(os.path.join(gridded_folder, '*area*'))[0]).cellareao
@@ -48,7 +49,7 @@ for fao, res in zip(fao_code, resolutions):
     weighted_stable_spin_df = uf.weighted_mean_timestep(stable_fn, weights, region_int)
 
     #Defining output folder
-    gfdl_out = os.path.join(base_dir, f'{fao}/monthly_weighted/{res}')
+    gfdl_out = os.path.join(base_dir, f'{fao}/monthly_weighted{smoothing}/{res}')
     os.makedirs(gfdl_out, exist_ok = True)
 
     #Saving data
