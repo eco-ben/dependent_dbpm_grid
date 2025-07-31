@@ -805,8 +805,7 @@ def loading_dbpm_biomass_inputs(data_folder, init_time = None):
 
 
 # Loading initialising values for gridded DBPM biomass ------
-def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None, fishing = True,
-                                smoothed = False):
+def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None, fishing = True):
     '''
     Inputs:
     - gridded_esm (character) Full path to folder where processed DBPM inputs are stored
@@ -814,46 +813,36 @@ def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None, fishing = True
     DBPM runs. If set to None, DBPM is run from the beginning
     - fishing (boolean) Default is True. It indicates whether or not fishing effort 
     should be included in the dynamic inputs dataset
-    - smoothed (boolean) Default is None. It indicates if "smoothed" inputs should be
-    used in the DBPM run.
-
+    
     Outputs:
     - ds_dynamic (xarray Dataset) Contains dynamic gridded inputs needed to run DBPM
     '''
 
-    if smoothed:
-        fn_search = '_monthly-smoothed_'
-    else:
-        fn_search = '_monthly_'
-        
     #Load data
-    [ui0_search] = glob(os.path.join(gridded_folder, 
-                                   f'ui0_spinup_obsclim*{fn_search}*'))
+    [ui0_search] = glob(os.path.join(gridded_folder, 'ui0_spinup_obsclim*'))
     ui0 = xr.open_zarr(ui0_search, chunks = {'time': -1, 'lon': -1, 
                                              'lat': -1})['ui0']
 
-    slope_search = [f for f in glob(
-        os.path.join(gridded_folder, f'*_slope_*{fn_search}*')) 
+    slope_search = [f for f in glob(os.path.join(gridded_folder, '*_slope_*')) 
                     if 'ctrlclim' not in f]
     slope = xr.open_mfdataset(
         slope_search, engine = 'zarr', 
         parallel = True)['slope'].chunk({'time': -1, 'lon': -1, 'lat': -1})
     
-    [pel_temp_search] = glob(os.path.join(
-        gridded_folder, f'pel-temp-eff_spinup_obsclim*{fn_search}*'))
+    [pel_temp_search] = glob(os.path.join(gridded_folder,
+                                          'pel-temp-eff_spinup_obsclim*'))
     pel_tempeffect = xr.open_zarr(
         pel_temp_search, chunks = {'time': -1, 'lon': -1, 
                                    'lat': -1})['pel_temp_eff']
     
-    [ben_temp_search] = glob(os.path.join(
-        gridded_folder, f'ben-temp-eff_spinup_obsclim*{fn_search}*'))
+    [ben_temp_search] = glob(os.path.join(gridded_folder, 
+                                          'ben-temp-eff_spinup_obsclim*'))
     ben_tempeffect = xr.open_zarr(
         ben_temp_search, chunks = {'time': -1, 'lon': -1, 
                                    'lat': -1})['ben_temp_eff']
 
-    sinking_rate_search = [f for f in glob(
-        os.path.join(gridded_folder, f'*_er_*{fn_search}*')) 
-                    if 'ctrlclim' not in f]
+    sinking_rate_search = [f for f in glob(os.path.join(gridded_folder, '*_er_*')) 
+                           if 'ctrlclim' not in f]
     sinking_rate = xr.open_mfdataset(
         sinking_rate_search, engine = 'zarr', 
         parallel = True)['export_ratio'].chunk({'time': -1, 'lon': -1, 'lat': -1})
@@ -1480,7 +1469,7 @@ def tot_biomass_calc(gridded_params, dbpm_fixed_inputs, group, biomass_current,
 # Run model per grid cell or averaged over an area ------
 def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs, 
                       dbpm_dynamic_inputs, region, model_res, out_folder, 
-                      force_positive = True, weekly = False):
+                      weekly = False, force_finite = True):
     '''
     Inputs:
     - gridded_params (dictionary) Gridded DBPM parameters obtained in step 04.
@@ -1495,6 +1484,8 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     - model_res (character) Spatial resolution of DBPM inputs (as included in folder
     and file names)
     - out_folder (character) Full path to folder where DBPM outputs will be stored
+    - weekly (boolean) Default is False. If set to True, the model will run at weekly
+    timesteps
 
     Outputs:
     - None. This function does not return any objects. Instead outputs are saved in
@@ -1597,8 +1588,10 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     # detritus = (dbpm_init_inputs['detritus']*det_pool['dW']).load()
 
     #If values are negative, assign a value of 0
-    if force_positive:
-        detritus = xr.where(detritus < 0, 0, detritus)
+    detritus = xr.where(detritus < 0, 0, detritus)
+    # if np.isinf(detritus).sum() > 0:
+    if force_finite:
+        detritus = detritus.where(np.isfinite(detritus))
         
     # Updating timestamp (results for next time step)
     detritus['time'] = [dbpm_time]
@@ -1633,8 +1626,10 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                                  total_mortality = mortality_pred['Z_u']).load()
     
     #If values are negative, assign a value of 0
-    if force_positive:
-        predators = xr.where(predators < 0, 0, predators)
+    predators = xr.where(predators < 0, 0, predators)
+    # if np.isinf(predators).sum() > 0:
+    if force_finite:
+        predators = predators.where(np.isfinite(predators))
     
     # Saving predators biomass
     # Creating file name
@@ -1664,9 +1659,11 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                                     reprod_rate = reprod_det['R_v'],
                                     growth_rate = growth_rates_pred_det['GG_v'], 
                                     total_mortality = mortality_det['Z_v']).load()
-    if force_positive:
-        #If values are negative, assign a value of 0
-        detritivores = xr.where(detritivores < 0, 0, detritivores)
+    #If values are negative, assign a value of 0
+    detritivores = xr.where(detritivores < 0, 0, detritivores)
+    # if np.isinf(detritivores).sum() > 0:
+    if force_finite:
+        detritivores = detritivores.where(np.isfinite(detritivores))
     
     # Saving detritivores biomass
     fn = f'detritivores_{model_res}_{region}_{pred_ts_next}.nc'
