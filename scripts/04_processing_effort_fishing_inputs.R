@@ -19,7 +19,7 @@ fao <- list.dirs(base_folder, recursive = F, full.names = F) |>
 resolutions <- c("025deg", "1deg")
 
 # "smoothed" can be either NULL to use original inputs, 'smoothed' to use LOESS
-# smoothed inputs or 'deseasoned' to use deasesoned inputs
+# smoothed inputs or 'deseasoned' to use deseasoned inputs
 # outputs to force DBPM
 smoothed <- "deseasoned"
 if(!is.null(smoothed)){
