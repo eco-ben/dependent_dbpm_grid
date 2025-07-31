@@ -12,27 +12,30 @@ base_folder <- "/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs"
 fao <- list.dirs(base_folder, recursive = F, full.names = F) |> 
   str_subset(pattern = "fao-")
   
-# Setting "smoothed" to TRUE will use 'smoothed' instead of original GFDL 
+# "smoothed" can be either NULL to use original inputs, 'smoothed' to use LOESS
+# smoothed inputs or 'deseasoned' to use deseasoned inputs
 # outputs to force DBPM
-smoothed <- TRUE
-if(smoothed){
+smoothed <- "deseasoned"
+if(!is.null(smoothed)){
   fn_search <- "-smoothed"
+  smoothed <- paste0("-", smoothed)
 }else{
   fn_search <- ""
+  smoothed <- ""
 }
 
 for(f in fao){
   # Load inputs (weighted means) - We will only use 1 deg inputs to calculate 
   # fishing parameters
-  dbpm_inputs <- file.path(base_folder, f, "monthly_weighted", "1deg",
-                           paste0("dbpm_clim-fish-inputs", fn_search, "_", f, 
-                                  "_1841-2010.parquet")) |> 
+  dbpm_inputs <- file.path(base_folder, f, paste0("monthly_weighted", smoothed),
+                           "1deg", paste0("dbpm_clim-fish-inputs", fn_search,
+                                          "_", f, "_1841-2010.parquet")) |> 
     read_parquet()
   
   # Searching best fishing parameters values for area of interest -----------
   #Path to folder where results will be stored
   results_folder <- file.path(base_folder, f, "fishing_params",
-                              paste0("best_fish_params", fn_search))
+                              paste0("best_fish_params", smoothed))
   #Number of iterations
   no_iter <- 100
   params_calibration <- LHSsearch(num_iter = no_iter,
@@ -97,7 +100,7 @@ for(f in fao){
 # regions
 fish_param <- fao |> 
   map_chr(\(x) list.files(file.path(base_folder, x, "fishing_params",
-                                    paste0("best_fish_params", fn_search)),
+                                    paste0("best_fish_params", smoothed)),
                           pattern = "best-fishing-parameters", recursive = T,
                           full.names = T)) |> 
   map(~read_parquet(.)) |> 
@@ -120,15 +123,15 @@ bad_params <- fao[!fao %in% good_params]
 no_iter <- 1000
 
 for(f in bad_params){
-  dbpm_inputs <- file.path(base_folder, f, "monthly_weighted", "1deg",
-                           paste0("dbpm_clim-fish-inputs", fn_search, "_", f, 
-                                  "_1841-2010.parquet")) |> 
+  dbpm_inputs <- file.path(base_folder, f, paste0("monthly_weighted", smoothed),
+                           "1deg", paste0("dbpm_clim-fish-inputs", fn_search, 
+                                          "_", f, "_1841-2010.parquet")) |> 
     read_parquet()
   
   # Searching best fishing parameters values for area of interest -----------
   #Path to folder where results will be stored
   results_folder <- file.path(base_folder, f, "best_fish_params",
-                              paste0("best_fish_params", fn_search))
+                              paste0("best_fish_params", smoothed))
   
   params_calibration_optim <- LHSsearch(num_iter = no_iter, seed = 1234,
                                         forcing_file = dbpm_inputs, 
@@ -186,7 +189,7 @@ out_folder <- "/g/data/vf71/fishmip_outputs/ISIMIP3a/fao_outputs"
 # regions
 fishing_params <- fao |> 
   map_chr(\(x) list.files(file.path(base_folder, x, "fishing_params",
-                                    paste0("best_fish_params", fn_search)),
+                                    paste0("best_fish_params", smoothed)),
                           pattern = "best-fishing-parameters", recursive = T,
                           full.names = T)) |> 
   # Load all fishing parameter files for coarser resolution
@@ -204,13 +207,14 @@ resolutions <- c("025deg", "1deg")
 for(f in fao){
   for(res in resolutions){
     results_folder <- file.path(base_folder, f, "init_fish_vals", res,
-                                paste0("best_fish_vals", fn_search))
+                                paste0("best_fish_vals", smoothed))
     # If the folder does not exist, create a new one
     if(!dir.exists(results_folder)){
       dir.create(results_folder, recursive = T)
     }
     
-    dbpm_inputs <- file.path(base_folder, f, "monthly_weighted", res,
+    dbpm_inputs <- file.path(base_folder, f, 
+                             paste0("monthly_weighted", smoothed), res,
                              paste0("dbpm_clim-fish-inputs", fn_search, "_", f, 
                                     "_1841-2010.parquet")) |> 
       read_parquet()
@@ -251,15 +255,15 @@ for(f in fao){
                            paste0("dbpm_gridded_size_params_", f, ".json")),
                  digits = 10)
   }
-    
-    # Defining folder to save non-spatial results
-    dbpm_out_folder <- file.path(out_folder, f, 
-                                 paste0("fishing_runs", fn_search),
-                                 "nonspatial")
-    if(!dir.exists(dbpm_out_folder)){
-      dir.create(dbpm_out_folder, recursive = T)
-    }
   
+  # Defining folder to save non-spatial results
+  dbpm_out_folder <- file.path(out_folder, f, 
+                               paste0("fishing_runs", smoothed),
+                               "nonspatial")
+  if(!dir.exists(dbpm_out_folder)){
+    dir.create(dbpm_out_folder, recursive = T)
+  }
+
   # Running non-spatial DBPM and saving results - This step is needed only 
   # once
   fout <- file.path(dbpm_out_folder, 
