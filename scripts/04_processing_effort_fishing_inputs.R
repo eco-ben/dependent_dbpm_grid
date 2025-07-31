@@ -18,13 +18,16 @@ fao <- list.dirs(base_folder, recursive = F, full.names = F) |>
 # Resolution
 resolutions <- c("025deg", "1deg")
 
-# Setting "smoothed" to TRUE will use 'smoothed' instead of original GFDL 
+# "smoothed" can be either NULL to use original inputs, 'smoothed' to use LOESS
+# smoothed inputs or 'deseasoned' to use deasesoned inputs
 # outputs to force DBPM
-smoothed <- TRUE
-if(smoothed){
+smoothed <- "deseasoned"
+if(!is.null(smoothed)){
   fn_search <- "-smoothed"
+  smoothed <- paste0("-", smoothed)
 }else{
   fn_search <- ""
+  smoothed <- ""
 }
 
 # Applying workflow to all regions
@@ -33,7 +36,7 @@ for(f in fao){
   for(res in resolutions){
     #Creating path to ocean inputs
     forcing_folder <- file.path(base_folder, f, 
-                                "monthly_weighted", res)
+                                paste0("monthly_weighted", smoothed), res)
     
     # Parent folder containing fishing effort and catches
     fishing_folder <- "/g/data/vf71/fishmip_inputs/ISIMIP3a"
