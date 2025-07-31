@@ -17,7 +17,8 @@ resolutions = ['1deg']
 # deseasoning data (deseasoned)
 smoothing = 'deseasoned'
 
-# Create variables based on 'smoothing' selection
+# Set variables to find correct input files based on 'smoothing' variable - Also
+# used to name processed inputs
 if smoothing != None:
     smoothing = f'-{smoothing}'
     weighted_fn = '-smoothed'
