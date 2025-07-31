@@ -17,13 +17,16 @@ resolutions = ['1deg']
 # deseasoning data (deseasoned)
 smoothing = 'deseasoned'
 
+# Create variables based on 'smoothing' selection
+if smoothing != None:
+    smoothing = f'-{smoothing}'
+    weighted_fn = '-smoothed'
+else:
+    smoothing = ''
+    weighted_fn = ''
+
+# Apply data processing workflow to all regions and resolutions
 for fao, res in zip(fao_code, resolutions):
-    if smoothing != None:
-        smoothing = f'-{smoothing}'
-        weighted_fn = '-smoothed'
-    else:
-        smoothing = ''
-        weighted_fn = ''
     gridded_folder = os.path.join(base_dir, fao, f'gridded{smoothing}', res)
     
     #Extracting data for FAO area
