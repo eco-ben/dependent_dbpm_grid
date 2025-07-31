@@ -9,7 +9,7 @@ from glob import glob
 # Defining base folder
 base_dir = '/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs/'
 # Getting list of FAO regions
-fao_code = ['fao-21']#[f for f in os.listdir(base_dir) if 'fao' in f]
+fao_code = ['fao-34']#[f for f in os.listdir(base_dir) if 'fao' in f]
 # Define resolutions
 # resolutions = ['1deg', '025deg']
 resolutions = ['1deg']
@@ -20,10 +20,10 @@ smoothing = 'deseasoned'
 for fao, res in zip(fao_code, resolutions):
     if smoothing != None:
         smoothing = f'-{smoothing}'
-        fn_search = '-smoothed'
+        weighted_fn = '-smoothed'
     else:
         smoothing = ''
-        fn_search = ''
+        weighted_fn = ''
     gridded_folder = os.path.join(base_dir, fao, f'gridded{smoothing}', res)
     
     #Extracting data for FAO area
