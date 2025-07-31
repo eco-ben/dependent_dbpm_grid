@@ -11,18 +11,22 @@ import useful_functions as uf
 
 # Defining base variables
 base_folder = '/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs'
-regions = [f for f in os.listdir(base_folder) if 'fao' in f]
+# regions = [f for f in os.listdir(base_folder) if 'fao' in f]
+regions = ['fao-31']
 # resolutions = ['1deg', '025deg']
 resolutions = ['1deg']
-# Set to TRUE to use 'smoothed' instead of original GFDL outputs 
-# as DBPM forcings
-smoothed = True
+# Choose whether smoothing of inputs will be performed by LOESS (smoothed) or
+# deseasoning data (deseasoned)
+smoothing = 'deseasoned'
 
-# Set search keywords to find correct input files - Also used to 
-# name processed inputs
-if smoothed:
+# Set variables to find correct input files based on 'smoothing' variable - Also
+# used to name processed inputs
+# Create variables based on 'smoothing' selection
+if smoothing != None:
+    smoothing = f'-{smoothing}'
     fn_search = '-smoothed'
 else:
+    smoothing = ''
     fn_search = ''
 
 # Looping through all regions and resolutions
@@ -38,14 +42,14 @@ for reg in regions:
             res_arc = '15arcmin'
 
         # Defining output folder
-        out_folder = os.path.join(reg_folder, f'gridded{fn_search}', res)
+        out_folder = os.path.join(reg_folder, f'gridded{smoothing}', res)
 
         # Transforming DBPM parameters to Python-friendly format ----
         # These parameters are the outputs of the `sizeparam`function
         # for R. See script 04_calculating_dbpm_fishing_params for 
         # more details.
         fish_param_file = os.path.join(
-            reg_folder, 'init_fish_vals', res, f'best_fish_vals{fn_search}', 
+            reg_folder, 'init_fish_vals', res, f'best_fish_vals{smoothing}',
                 f'dbpm_gridded_size_params_{reg}.json')
     
         gridded_params = json.load(open(fish_param_file))
@@ -70,8 +74,7 @@ for reg in regions:
         fout = os.path.basename(fish_param_file).replace(reg, f'{reg}_python')
         #Save to disk
         with open(os.path.join(
-            os.path.dirname(fish_param_file), fout), 
-                  'w') as outfile:
+            os.path.dirname(fish_param_file), fout), 'w') as outfile:
             json.dump(gridded_python, outfile)
 
         # Loading gridded input data ----
@@ -80,7 +83,7 @@ for reg in regions:
             out_folder, '*obsclim_deptho_*'))[0])['deptho']
         #Loading intercept data for stable spinup period
         int_phy_zoo_stable_spin = xr.open_zarr(glob(os.path.join(
-            out_folder, f'*stable-spin_intercept_*_monthly{fn_search}_*'))[0])['intercept']
+            out_folder, f'*stable-spin_intercept_*_monthly_*'))[0])['intercept']
         #Loading intercept data for spinup period
         int_phy_zoo_spinup = xr.open_zarr(glob(os.path.join(
             out_folder, f'*spinup_intercept_*_monthly{fn_search}_*'))[0])['intercept']
@@ -89,7 +92,7 @@ for reg in regions:
             out_folder, f'*obsclim_intercept_*_monthly{fn_search}_*'))[0])['intercept']
         #Loading sea surface temperature data for stable spinup period
         sea_surf_temp_stable_spin = xr.open_zarr(glob(os.path.join(
-            out_folder, f'*stable-spin_tos_*_monthly{fn_search}_*'))[0])['tos']
+            out_folder, f'*stable-spin_tos_*_monthly_*'))[0])['tos']
         #Loading sea surface temperature data for spinup period
         sea_surf_temp_spinup = xr.open_zarr(glob(os.path.join(
             out_folder, f'*spinup_tos_*_monthly{fn_search}_*'))[0])['tos']
@@ -98,7 +101,7 @@ for reg in regions:
             out_folder, f'*obsclim_tos_*_monthly{fn_search}_*'))[0])['tos']
         #Loading bottom ocean temperature data for spinup period
         sea_floor_temp_stable_spin = xr.open_zarr(glob(os.path.join(
-            out_folder, f'*stable-spin_tob_*_monthly{fn_search}_*'))[0])['tob']
+            out_folder, f'*stable-spin_tob_*_monthly_*'))[0])['tob']
         #Loading bottom ocean temperature data for spinup period
         sea_floor_temp_spinup = xr.open_zarr(glob(os.path.join(
             out_folder, f'*spinup_tob_*_monthly{fn_search}_*'))[0])['tob']
@@ -111,8 +114,7 @@ for reg in regions:
                                       freq = 'MS')
         
         # Log10 size of individuals found in the model
-        log10_file = os.path.join(base_folder, 
-                                  'log10_size_bins_matrix.zarr')
+        log10_file = os.path.join(base_folder, 'log10_size_bins_matrix.zarr')
         if not os.path.exists(log10_file):
             log10_size_bins_mat = xr.DataArray(
                 data = log10_size_bins,
@@ -159,7 +161,7 @@ for reg in regions:
         effort_out.name = 'effort'
         effort_out.to_zarr(os.path.join(
             out_folder, 
-            f'effort_spinup_obsclim_{res_arc}_{reg}_monthly_1741_2010.zarr/'),
+            f'effort_spinup_obsclim_{res_arc}_{reg}_monthly{fn_search}_1741_2010.zarr/'),
                            consolidated = True, mode = 'w')
 
         # Habitat preferences ----
