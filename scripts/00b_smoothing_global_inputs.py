@@ -25,10 +25,10 @@ if __name__ == '__main__':
 
     #Define experiments and resolution
     exp_name = ['obsclim', 'ctrlclim']
-    resolutions = ['025deg']#, '025deg']
+    resolutions = ['1deg', '025deg']
 
     #Define variables of interest
-    dynamic_vars = ['er', 'intercept', 'slope']#, 'tob', 'tos']
+    dynamic_vars = ['er', 'intercept', 'slope', 'tob', 'tos']
 
     # Choose whether smoothing of inputs will be performed by LOESS (smoothed) or
     # deseasoning data (deseasoned)
