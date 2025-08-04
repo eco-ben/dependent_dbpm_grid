@@ -6,7 +6,8 @@ import useful_functions as uf
 import xarray as xr
 import numpy as np
 from glob import glob
-
+from distributed import Client
+from multiprocessing import Process, freeze_support
 
 #Start cluster
 if __name__ == '__main__':
