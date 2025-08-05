@@ -21,7 +21,7 @@ if __name__ == '__main__':
 
     #Define experiments and resolution
     exp_name = ['obsclim', 'ctrlclim']
-    resolutions = ['1deg']#, '025deg']
+    resolutions = ['1deg', '025deg']
 
     #Define variables for which a spinup period will be created
     dynamic_vars = ['er', 'intercept', 'slope', 'tob', 'tos']
