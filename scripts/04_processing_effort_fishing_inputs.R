@@ -205,7 +205,7 @@ for(f in fao){
     }
     
     #Saving results - only save once per FAO region
-    fout <- file.path(folder_out, paste0("effort_", f, ".pdf"))
+    fout <- file.path(folder_out, paste0("effort", smoothed, "_", f, ".pdf"))
     if(!file.exists(fout)){
       ggsave(fout, device = "pdf", dpi = 300)
     }
