@@ -26,7 +26,7 @@ if __name__ == '__main__':
     vars_int = ['er', 'intercept', 'slope', 'tob', 'tos', 'deptho', 'areacello']
     
     # Define resolutions
-    resolutions = ['1deg']#, '025deg']
+    resolutions = ['1deg', '025deg']
     
     # Choose whether smoothing of inputs will be performed by LOESS (smoothed) or
     # deseasoning data (deseasoned). Select None for no smoothing.
@@ -56,18 +56,18 @@ if __name__ == '__main__':
 
         #List all files to be extracted
         for fao in fao_code:
-            reg = f'fao-{fao}'
+            gfdl_out = os.path.join(base_dir, 'fao_inputs', f'fao-{fao}', 
+                                    out_name, res)
+            os.makedirs(gfdl_out, exist_ok = True)
             mask = xr.where(mask_all == fao, 1, np.nan)
             for dv in vars_int:
                 #Ignoring files not needed
-                file_list = [f for f in file_list if dv in f]
-                gfdl_out = os.path.join(base_dir, 'fao_inputs', reg, out_name, res)
-                os.makedirs(gfdl_out, exist_ok = True)
-            
+                file_dv = [f for f in file_list if f'_{dv}_' in f]
+                
                 #Extracting data for FAO area
-                for f in file_list:
+                for f in file_dv:
                     #Create file path to save outputs
-                    f_out = os.path.basename(f).replace('global', reg)
+                    f_out = os.path.basename(f).replace('global', f'fao-{fao}')
                     f_out = os.path.join(gfdl_out, f_out)
                     #Apply function
                     if fao in [18, 61, 71, 81, 88]:
