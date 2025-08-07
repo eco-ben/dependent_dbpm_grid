@@ -28,7 +28,7 @@ for(f in fao){
   # Load inputs (weighted means) - We will only use 1 deg inputs to calculate 
   # fishing parameters
   dbpm_inputs <- file.path(base_folder, f, paste0("monthly_weighted", smoothed),
-                           "1deg", paste0("dbpm_clim-fish-inputs", fn_search,
+                           "025deg", paste0("dbpm_clim-fish-inputs", fn_search,
                                           "_", f, "_1841-2010.parquet")) |> 
     read_parquet()
   
@@ -99,10 +99,10 @@ for(f in fao){
 # Getting a list of files containing fishing parameters calculated for all 
 # regions
 fish_param <- fao |> 
-  map_chr(\(x) list.files(file.path(base_folder, x, "fishing_params",
-                                    paste0("best_fish_params", smoothed)),
-                          pattern = "best-fishing-parameters", recursive = T,
-                          full.names = T)) |> 
+  map_chr(\(x) file.path(base_folder, x, "fishing_params",
+                         paste0("best_fish_params", smoothed))) |> 
+  list.files(pattern = "best-fishing-parameters", recursive = T,
+                          full.names = T) |> 
   map(~read_parquet(.)) |> 
   bind_rows()
 
@@ -120,20 +120,20 @@ bad_params <- fao[!fao %in% good_params]
 
 # Since correlation is below 0.5 and the plots comparing estimates and obs do 
 # not look like a great fit, we will calculate fishing parameters again 
-no_iter <- 1000
+no_iter <- 500
 
 for(f in bad_params){
   dbpm_inputs <- file.path(base_folder, f, paste0("monthly_weighted", smoothed),
-                           "1deg", paste0("dbpm_clim-fish-inputs", fn_search, 
-                                          "_", f, "_1841-2010.parquet")) |> 
+                           "025deg", paste0("dbpm_clim-fish-inputs", fn_search,
+                                            "_", f, "_1841-2010.parquet")) |> 
     read_parquet()
   
   # Searching best fishing parameters values for area of interest -----------
   #Path to folder where results will be stored
-  results_folder <- file.path(base_folder, f, "best_fish_params",
+  results_folder <- file.path(base_folder, f, "fishing_params",
                               paste0("best_fish_params", smoothed))
   
-  params_calibration_optim <- LHSsearch(num_iter = no_iter, seed = 1234,
+  params_calibration_optim <- LHSsearch(num_iter = no_iter, seed = 42,
                                         forcing_file = dbpm_inputs, 
                                         gridded_forcing = NULL, 
                                         best_val_folder = results_folder, 
@@ -176,7 +176,7 @@ for(f in bad_params){
   
   #Create plot with parameters that resulted in highest correlation
   params_calibration_optim |>
-    filter(cor == max(corr)) |> 
+    filter(cor == max(cor)) |> 
     corr_calib_plots(dbpm_inputs, file.path(results_folder, "high_corr"),
                      new_detritus_calc = F)
 }
@@ -188,10 +188,10 @@ out_folder <- "/g/data/vf71/fishmip_outputs/ISIMIP3a/fao_outputs"
 # Getting a list of files containing fishing parameters calculated for all 
 # regions
 fishing_params <- fao |> 
-  map_chr(\(x) list.files(file.path(base_folder, x, "fishing_params",
-                                    paste0("best_fish_params", smoothed)),
-                          pattern = "best-fishing-parameters", recursive = T,
-                          full.names = T)) |> 
+  map_chr(\(x) file.path(base_folder, x, "fishing_params",
+                                    paste0("best_fish_params", smoothed))) |> 
+  list.files(pattern = "best-fishing-parameters", recursive = T,
+                          full.names = T) |> 
   # Load all fishing parameter files for coarser resolution
   map(~read_parquet(.)) |> 
   bind_rows() |> 
@@ -202,7 +202,7 @@ fishing_params <- fao |>
 
 # Calculate initial conditions for each resolution
 # Resolution
-resolutions <- c("025deg", "1deg")
+resolutions <- c("1deg", "025deg")
 
 for(f in fao){
   for(res in resolutions){
