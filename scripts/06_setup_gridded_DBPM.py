@@ -11,10 +11,8 @@ import useful_functions as uf
 
 # Defining base variables
 base_folder = '/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs'
-# regions = [f for f in os.listdir(base_folder) if 'fao' in f]
-regions = ['fao-31']
-# resolutions = ['1deg', '025deg']
-resolutions = ['1deg']
+regions = [f for f in os.listdir(base_folder) if 'fao' in f]
+resolutions = ['1deg', '025deg']
 # Choose whether smoothing of inputs will be performed by LOESS (smoothed) or
 # deseasoning data (deseasoned)
 smoothing = 'deseasoned'
@@ -83,7 +81,7 @@ for reg in regions:
             out_folder, '*obsclim_deptho_*'))[0])['deptho']
         #Loading intercept data for stable spinup period
         int_phy_zoo_stable_spin = xr.open_zarr(glob(os.path.join(
-            out_folder, f'*stable-spin_intercept_*_monthly_*'))[0])['intercept']
+            out_folder, f'*stable-spin_intercept_*_monthly*'))[0])['intercept']
         #Loading intercept data for spinup period
         int_phy_zoo_spinup = xr.open_zarr(glob(os.path.join(
             out_folder, f'*spinup_intercept_*_monthly{fn_search}_*'))[0])['intercept']
@@ -92,7 +90,7 @@ for reg in regions:
             out_folder, f'*obsclim_intercept_*_monthly{fn_search}_*'))[0])['intercept']
         #Loading sea surface temperature data for stable spinup period
         sea_surf_temp_stable_spin = xr.open_zarr(glob(os.path.join(
-            out_folder, f'*stable-spin_tos_*_monthly_*'))[0])['tos']
+            out_folder, f'*stable-spin_tos_*_monthly*'))[0])['tos']
         #Loading sea surface temperature data for spinup period
         sea_surf_temp_spinup = xr.open_zarr(glob(os.path.join(
             out_folder, f'*spinup_tos_*_monthly{fn_search}_*'))[0])['tos']
@@ -101,7 +99,7 @@ for reg in regions:
             out_folder, f'*obsclim_tos_*_monthly{fn_search}_*'))[0])['tos']
         #Loading bottom ocean temperature data for spinup period
         sea_floor_temp_stable_spin = xr.open_zarr(glob(os.path.join(
-            out_folder, f'*stable-spin_tob_*_monthly_*'))[0])['tob']
+            out_folder, f'*stable-spin_tob_*_monthly*'))[0])['tob']
         #Loading bottom ocean temperature data for spinup period
         sea_floor_temp_spinup = xr.open_zarr(glob(os.path.join(
             out_folder, f'*spinup_tob_*_monthly{fn_search}_*'))[0])['tob']
