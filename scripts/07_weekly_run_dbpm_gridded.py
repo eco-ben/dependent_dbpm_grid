@@ -19,22 +19,37 @@ if __name__ == '__main__':
     client = Client(threads_per_worker = 1, memory_limit = 0)
     
     ## Name of region and model resolution ----
-    reg = 'fao-18'
+    reg = 'fao-31'
     res = '1deg'
 
+    ## Define if run should include fishing ----
+    fishing = True
+    ## Define if smoothed inputs should be used ----
+    smoothed = True
+    
     ## If starting DBPM run from a specific time step ----
     # Character: Year and month from when DBPM initialisation values should be loaded
     # If starting model for the first time, it should be set to None
-    init_time = None
+    init_time = '1751-12-05'
+
+    # Set search keywords to find correct input files - Also used to 
+    # name processed inputs
+    if smoothed:
+        fn_search = '-smoothed'
+    else:
+        fn_search = ''
 
     ## Defining input and output folders ----
     base_folder = '/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs'
     base_out_folder = '/g/data/vf71/fishmip_outputs/ISIMIP3a/fao_outputs'
     
     #Location of gridded inputs
-    gridded_folder = os.path.join(base_folder, reg, 'gridded', res)
+    # gridded_folder = os.path.join(base_folder, reg, f'gridded{fn_search}', 
+    gridded_folder = os.path.join(base_folder, reg, f'gridded-deseasoned', 
+                                  res)
     #Folder where outputs will be stored 
-    out_folder = os.path.join(base_out_folder, reg, 'fishing_runs_weekly', res)
+    out_folder = os.path.join(base_out_folder, reg, 
+                              'fishing_runs-deseasoned_weekly', res)
     #If output folder does not exist, it will create it
     os.makedirs(out_folder, exist_ok = True) 
     
@@ -51,18 +66,19 @@ if __name__ == '__main__':
 
     ## Loading predator, detritivores and detritus initialisation data ----
     if init_time is None:
-        # ds_init = uf.loading_dbpm_biomass_inputs(gridded_folder)
-        ds_init = uf.loading_dbpm_biomass_inputs(os.path.join(gridded_folder, 
-                                                             'weekly'))
+        ds_init = uf.loading_dbpm_biomass_inputs(gridded_folder)
+        # ds_init = uf.loading_dbpm_biomass_inputs(os.path.join(gridded_folder, 
+        #                                                      'weekly'))
     else:
         ds_init = uf.loading_dbpm_biomass_inputs(out_folder, init_time)
     
     ## Loading dynamic data ----
     # ds_dynamic = uf.loading_dbpm_dynamic_inputs(gridded_folder, init_time, 
     #                                             capped = False)
-    ds_dynamic = xr.open_mfdataset(glob(os.path.join(gridded_folder, 
-                                                     'weekly/*spinup*')), 
-                                   engine = 'zarr', parallel = True)
+    
+    ds_dynamic = xr.open_zarr(
+        os.path.join(base_folder, reg, 'gridded-deseasoned-weekly', res,
+                     'weekly_dynamic_dbpm_inputs.zarr'))
   
     if init_time is not None:
         ds_dynamic = ds_dynamic.sel(time = slice(init_time, None))
@@ -88,8 +104,9 @@ if __name__ == '__main__':
     
     #Gridded parameters
     gridded_params = json.load(open(
-        os.path.join(base_folder, reg, 'fishing_params', res, 
-                     'best_fish_vals', 
+       os.path.join(base_folder, reg, 'init_fish_vals', res, 
+                     # f'best_fish_vals{fn_search}', 
+                     f'best_fish_vals-deseasoned', 
                      f'dbpm_gridded_size_params_{reg}_python.json')))
 
     ## Running spatial DBPM ----
@@ -122,6 +139,6 @@ if __name__ == '__main__':
         
         ds_init = uf.gridded_sizemodel(gridded_params, ds_fixed, ds_init, 
                                        ds_dyn, region = reg, model_res = res, 
-                                       out_folder = out_folder, force_positive = True,
-                                       weekly = True)
+                                       out_folder = out_folder, weekly = True, 
+                                       force_finite = False)
 
