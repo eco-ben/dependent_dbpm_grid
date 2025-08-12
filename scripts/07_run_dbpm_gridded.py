@@ -19,7 +19,7 @@ if __name__ == '__main__':
     client = Client(threads_per_worker = 1, memory_limit = 0)
     
     ## Name of region and model resolution ----
-    reg = 'fao-21'
+    reg = 'fao-34'
     res = '1deg'
 
     ## Define if run should include fishing ----
@@ -30,7 +30,7 @@ if __name__ == '__main__':
     ## If starting DBPM run from a specific time step ----
     # Character: Year and month from when DBPM initialisation values should be loaded
     # If starting model for the first time, it should be set to None
-    init_time = None
+    init_time = '1963-06'
 
     # Set variables to find correct input files based on 'smoothing' variable - Also
     # used to name processed inputs
