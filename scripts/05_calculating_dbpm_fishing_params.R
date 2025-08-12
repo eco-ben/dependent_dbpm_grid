@@ -235,7 +235,8 @@ for(f in fao){
     # Run non-spatial DBPM.  This step is necessary to get the initial 
     # conditions to be used in the gridded DBPM
     init_results <- run_model(fish_param, dbpm_inputs, withinput = F, 
-                              new_detritus_calc = F)
+                              new_detritus_calc = F, xmin_consumer_u = -3,
+                              xmin_consumer_v = -3)
     
     # Prepare fishing parameters for gridded DBPM 
     pred_initial <- rowMeans(init_results$predators)
@@ -269,7 +270,8 @@ for(f in fao){
   fout <- file.path(dbpm_out_folder, 
                     paste0("dbpm_nonspatial_", f, "_1841-2010.parquet"))
   if(!file.exists(fout)){
-    run_model(fish_param, dbpm_inputs, new_detritus_calc = F) |> 
+    run_model(fish_param, dbpm_inputs, new_detritus_calc = F,
+              xmin_consumer_u = -3, xmin_consumer_v = -3) |> 
       write_parquet(fout)
   }
 }
