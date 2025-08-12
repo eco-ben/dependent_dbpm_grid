@@ -18,13 +18,16 @@ fao <- list.dirs(base_folder, recursive = F, full.names = F) |>
 # Resolution
 resolutions <- c("025deg", "1deg")
 
-# Setting "smoothed" to TRUE will use 'smoothed' instead of original GFDL 
+# "smoothed" can be either NULL to use original inputs, 'smoothed' to use LOESS
+# smoothed inputs or 'deseasoned' to use deseasoned inputs
 # outputs to force DBPM
-smoothed <- TRUE
-if(smoothed){
+smoothed <- "deseasoned"
+if(!is.null(smoothed)){
   fn_search <- "-smoothed"
+  smoothed <- paste0("-", smoothed)
 }else{
   fn_search <- ""
+  smoothed <- ""
 }
 
 # Applying workflow to all regions
@@ -33,7 +36,7 @@ for(f in fao){
   for(res in resolutions){
     #Creating path to ocean inputs
     forcing_folder <- file.path(base_folder, f, 
-                                "monthly_weighted", res)
+                                paste0("monthly_weighted", smoothed), res)
     
     # Parent folder containing fishing effort and catches
     fishing_folder <- "/g/data/vf71/fishmip_inputs/ISIMIP3a"
@@ -81,7 +84,7 @@ for(f in fao){
                               "catch_histsoc_1869_2017_EEZ_addFAO.csv") |> 
       read_csv_arrow(col_select = c("Year", "fao_area", "Reported", "IUU")) |>
       #Selecting area of interest
-      filter(fao_area == fao_id) |> 
+      filter(fao_area == fao_id & Year <= 2010) |> 
       # catch is in tonnes. This was checked in "FishingEffort" project
       mutate(catch_tonnes = Reported+IUU) |> 
       group_by(Year, fao_area) |> 
@@ -108,9 +111,8 @@ for(f in fao){
   
     #From CCAMLR
     #Load catch data
-    catch_ccamlr <- file.path(fishing_folder, 
-                              "CCAMLR_Statistical_Bulletin_V36/catch_and_effort",
-                              "Catch.csv") |> 
+    catch_ccamlr <- file.path(fishing_folder, "CCAMLR_Statistical_Bulletin_V36",
+                              "catch_and_effort", "Catch.csv") |> 
       read_csv_arrow(col_select = c("year", "asd_code", 
                                     "greenweight_caught_tonne")) |> 
       #Merge with codes for CCAMLR regions
