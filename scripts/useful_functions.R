@@ -794,13 +794,24 @@ sizemodel <- function(params, ERSEM_det_input = F, temp_effect = T,
 
 # Running model with time series ----
 run_model <- function(fishing_params, dbpm_inputs, withinput = T, 
-                      new_detritus_calc){
+                      new_detritus_calc = F, xmin_consumer_u = -3, 
+                      xmin_consumer_v = -3){
   #Inputs:
   # fishing_params (list) - Fishing parameters produced by the `sizeparam` 
   # function
   # dbpm_inputs (data frame) - Climate and fishing forcing data produced in
   # script 03_processing_effort_fishing_inputs.R
   # withinput (boolean) - Default is TRUE. ????
+  # new_detritus_calc (boolean) - Indicates whether or not the new detritus
+  # calculation method should applied
+  # xmin_consumer_u (integer) - Default is -3. This is the minimum body size 
+  # in grams for predators. This parameter represents the exponent using a 
+  # base of 10. When using default value -3, this means the minimum size for 
+  # predators is 10^(-3) or 0.001 g.
+  # xmin_consumer_v (integer) - Default is -3. This is the minimum body size 
+  # in grams for detritivores This parameter represents the exponent using a 
+  # base of 10. When using default value -3, this means the minimum size for 
+  # detritivores is 10^(-3) or 0.001 g.
   #
   #Output:
   # If withinput set to TRUE:
@@ -808,8 +819,9 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = T,
   # If withinput set to FALSE:
   # result_set (data frame) - ???
   
-  params <- sizeparam(dbpm_inputs, fishing_params, xmin_consumer_u = -3, 
-                      xmin_consumer_v = -3)
+  params <- sizeparam(dbpm_inputs, fishing_params, 
+                      xmin_consumer_u = xmin_consumer_u, 
+                      xmin_consumer_v = xmin_consumer_v)
   
   # run model through time
   # TO DO IN SIZEMODEL CODE: make fishing function like one in model template
@@ -858,7 +870,8 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = T,
 
 # Comparing observed and predicted fish biomass ----
 getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F, 
-                     figure_folder = NULL, new_detritus_calc){
+                     figure_folder = NULL, new_detritus_calc, 
+                     xmin_consumer_u = -3, xmin_consumer_v = -3){
   #Inputs:
   # fishing_params (data frame) - Contains fishing parameters
   # dbpm_inputs (data frame) - Climate and fishing forcing data
@@ -868,6 +881,16 @@ getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F,
   # predicted and observed values is calculated
   # figure_folder (character) - Optional. Full path to the folder where figures
   # comparing observed and predicted data will be stored
+  # new_detritus_calc (boolean) - Indicates whether or not the new detritus
+  # calculation method should applied
+  # xmin_consumer_u (integer) - Default is -3. This is the minimum body size 
+  # in grams for predators. This parameter represents the exponent using a 
+  # base of 10. When using default value -3, this means the minimum size for 
+  # predators is 10^(-3) or 0.001 g.
+  # xmin_consumer_v (integer) - Default is -3. This is the minimum body size 
+  # in grams for detritivores This parameter represents the exponent using a 
+  # base of 10. When using default value -3, this means the minimum size for 
+  # detritivores is 10^(-3) or 0.001 g.
   #
   #Output:
   # If corr set to FALSE:
@@ -887,8 +910,10 @@ getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F,
   
   #Running model
   result <- run_model(fishing_params, dbpm_inputs, 
-                      new_detritus_calc = new_detritus_calc)
-  
+                      new_detritus_calc = new_detritus_calc, 
+                      xmin_consumer_u = xmin_consumer_u, 
+                      xmin_consumer_v = xmin_consumer_v)
+
   #Aggregate data by year (mean to conserve units)
   error_calc <- result |> 
     filter(year >= year_int) |> 

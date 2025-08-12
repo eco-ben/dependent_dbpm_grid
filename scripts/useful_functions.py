@@ -13,7 +13,7 @@ from glob import glob
 import pandas as pd
 import json
 from statsmodels.nonparametric.smoothers_lowess import lowess
-
+from statsmodels.tsa.seasonal import STL
 
 #Transforming netCDF files to zarr
 def netcdf_to_zarr(file_path, path_out):
@@ -26,21 +26,26 @@ def netcdf_to_zarr(file_path, path_out):
     - None. This function saves results as zarr files in the path provided.
     '''
 
-    #Loading and rechunking data
-    da = xr.open_dataarray(file_path, chunks = {'lat': '50MB', 'lon': '50MB'})
+    # Loading and rechunking data
+    da = xr.open_dataarray(file_path)
 
-    #Change date format
-    try:
-        da['time'] = pd.DatetimeIndex(da.indexes['time'].to_datetimeindex(),
-                                      dtype = 'datetime64[ns]')
-    except:
-        pass
+    # Rechunking before saving 
+    if 'time' in da.dims:
+        da = da.chunk({'time': '500MB', 'lat': -1, 'lon': -1})
+        # Change date format to DateTimeIndex if needed
+        try:
+            da['time'] = pd.DatetimeIndex(da.indexes['time'].to_datetimeindex(),
+                                          dtype = 'datetime64[ns]')
+        except:
+            pass
+    else:
+        da = da.chunk({'lat': -1, 'lon': -1})
 
     #Save results
     da.to_zarr(path_out, consolidated = True, mode = 'w')
 
 
-# Applying LOESS smoothing to DBPM input data
+# Apply LOESS smoothing to gridded data
 def loess_xarray(da, time_dim, **kwargs):
     '''
     Inputs:
@@ -59,33 +64,171 @@ def loess_xarray(da, time_dim, **kwargs):
     else:
         frac = 0.5
 
+    # If "it" is not provided, default to 0
+    if kwargs.get('it') is not None:
+        it = kwargs['it']
+    else:
+        it = 0
+
     #Turn time_sim and da to numpy arrays
     data_vals = np.asarray(da)
     time_vals = np.asarray(time_dim)
 
     #Applying LOESS smoother - Keep only smoothed values (i.e., ignore time column)
-    smooth = lowess(data_vals, time_vals, is_sorted = True, frac = frac, it = 0, 
+    smooth = lowess(data_vals, time_vals, is_sorted = True, frac = frac, it = it, 
                     missing = 'none')[:, 1]
-    
     return smooth
 
 
+# Smoothing DBPM inputs using LOESS
+def smoothing_loess(file_path, path_out, **kwargs):
+    '''
+    - file_path (character) File path where GFDL zarr file is located
+    - path_out (character) File path where outputs should be stored as zarr files
+    **Optional**: 
+    - mth_smooth (numeric) Number of timesteps to be used in data smoothing. If not
+    provided, it defaults to 4 timesteps.
+
+    Outputs:
+    - None. This function saves results as zarr files in the path provided.    
+    '''
+    # Loading data
+    da = xr.open_zarr(file_path)
+    #Getting name of variable contained in dataset
+    [var] = list(da.keys())
+    da = da[var]
+    
+    # If "frac" is not provided, default to 0.5
+    if kwargs.get('mth_smooth') is not None:
+        frac = (kwargs['mth_smooth']/len(da.time))
+    else:
+        frac = (4/len(da.time))
+    
+    # If "it" is not provided, default to 0
+    if kwargs.get('it') is not None:
+        it = kwargs['it']
+    else:
+        it = 0
+    
+    # Define function being used first
+    da_smooth = xr.apply_ufunc(
+        loess_xarray, 
+        # Pass arguments needed by function being applied
+        da, da.time, kwargs = {'frac': frac, 'it': it},
+        # Dimensions the function needs for each argument (i.e.,
+        # the function will be applied along the time dimension)
+        input_core_dims = [['time'], ['time']], 
+        # Dimensions of each output from the function
+        output_core_dims = [['time']],
+        # Allows function needs to applied along time dimension
+        # (i.e., one lat and lon at a time)
+        vectorize = True,
+        # Parallise function using Dask
+        dask = 'parallelized',
+        # Allow rechunking of data if needed
+        dask_gufunc_kwargs = {'allow_rechunk': True},
+        # Define the type of object the function will return
+        output_dtypes = [float]).load()
+    # Add metadata and record smoothing step
+    da_smooth = da_smooth.assign_attrs(da.attrs)
+    da_smooth.attrs['fishmip_postprocess'] = f'LOESS smooth applied to data, span = {frac}, it = {it}'
+    # Add variable name
+    da_smooth.name = var
+    # Save results
+    da_smooth.to_zarr(path_out, consolidated = True, mode = 'w')
+
+
+# Apply seasonal trend decomposition using LOESS (STL) to gridded data
+def stl_xarray(da, **kwargs):
+    '''
+    Inputs:
+    - da (Data Array) - 1 dimensional vector from a data array
+    **Optional**
+    - period (integer) - Default is 12 (annual). The periodicity of the time series
+    (e.g., 12 for monthly, 365 for daily).
+    - component (character) - Default is seasonal. Returns specified STL component
+
+    Outputs:
+    res - Specified STL component
+    '''
+    #Get data into correct format to use an input in STL function
+    data_vals = np.asarray(da)
+
+    #If more than half the values are NAs, then return NAs
+    if np.isnan(data_vals).sum() > len(data_vals)*0.5:
+        return np.full_like(data_vals, np.nan)
+    
+    if kwargs.get('period') is not None:
+        period = kwargs['period']
+    else:
+        period = 12
+
+    if kwargs.get('component') is not None:
+        component = kwargs['component']
+    else:
+        component = 'seasonal'
+    
+    #Seasonal trend decomposition
+    res = STL(data_vals, period = period).fit()
+    if component == 'trend':
+        return res.trend
+    elif component == 'seasonal':
+        return res.seasonal
+    elif component == 'resid':
+        return res.resid
+    else:
+        raise ValueError("component must be 'trend', 'seasonal', or 'resid'")
+
+
+# Applying STL decomposition to an xarray DataArray along the 'time' dimension
+def seasonal_decomposition(file_path, path_out, period, component):
+    '''
+    - file_path (character) File path where GFDL zarr file is located
+    - period (integer) The periodicity of the time series (e.g., 12 for monthly, 
+    365 for daily).
+    - component (character) Default is seasonal. Returns specified STL component
+
+    Outputs:
+    - None. A new DataArray containing the original data minus the specified 
+    decomposed component is saved in the file path provided in path_out.  
+    '''
+    # Loading data
+    da = xr.open_zarr(file_path)
+    #Getting name of variable contained in dataset
+    [var] = list(da.keys())
+    da = da[var]
+
+    # Use apply_ufunc to apply the wrapper function across spatial dimensions
+    da_comp = xr.apply_ufunc(stl_xarray, da, 
+                             kwargs = {'period': period, 'component': component},
+                             input_core_dims = [['time']], 
+                             output_core_dims = [['time']],
+                             dask = 'parallelized', vectorize = True, 
+                             output_dtypes = [da.dtype],
+                             # Allow rechunking of data if needed
+                             dask_gufunc_kwargs = {'allow_rechunk': True}).load()
+
+    #Remove calculated component from original data
+    da_decomp = da-da_comp
+    # Add metadata and record smoothing step
+    da_decomp = da_decomp.assign_attrs(da.attrs)
+    da_decomp.attrs['fishmip_postprocess'] = f'Original data minus {component} component'
+    # Add variable name
+    da_decomp.name = var
+    # Save results
+    da_decomp.to_zarr(path_out, consolidated = True, mode = 'w')
+
+    
 ## Extracting GFDL outputs for region of interest using boolean mask
-def extract_gfdl(file_path, mask, path_out, cross_dateline = False, loess_smooth = False,
-                 **kwargs):
+def extract_gfdl(file_path, mask, path_out, cross_dateline = False):
     '''
     Inputs:
     - file_path (character) File path where GFDL zarr file is located
     - mask (boolean data array) Grid cells within region of interest should be identified
     as 1.
     - path_out (character) File path where outputs should be stored as zarr files
-    - loess_smooth (boolean) Default is False. If set to True, a LOESS smooth will
-    be applied to the data along the time dimension
     - cross_dateline (boolean) Default is False. If set to True, it will convert longitudes 
     from +/-180 to 0-360 degrees before extracting data for region of interest
-    **Optional**: 
-    - mth_smooth (numeric) Number of timesteps to be used in data smoothing. If not
-    provided, it defaults to 4 timesteps.
     
     Outputs:
     - None. This function saves results as zarr files in the path provided.
@@ -105,60 +248,25 @@ def extract_gfdl(file_path, mask, path_out, cross_dateline = False, loess_smooth
     [var] = list(da.keys())
     da = da[var]
     
-    #Apply mask and remove rows where all grid cells are empty to reduce data array size
+    #Apply mask and remove rows where all grid cells are empty to 
+    #reduce data array size
     if cross_dateline:
         da = da.where(mask == 1)
         da['lon'] = da.lon%360
         da = da.sortby('lon')
-        da = da.dropna(dim = 'lon', how = 'all').dropna(dim = 'lat', how = 'all')
+        da = (da.dropna(dim = 'lon', how = 'all').
+              dropna(dim = 'lat', how = 'all')).load()
     else:
-        da = da.where(mask == 1, drop = True)
+        da = da.where(mask == 1, drop = True).load()
     
     #Rechunking data
     if 'time' in da.dims:
         da = da.chunk({'time': -1, 'lat': -1, 'lon': -1})
     else:
         da = da.chunk({'lat':-1, 'lon': -1})
-
-    #Applying smoothing
-    if loess_smooth:
-        # If "frac" is not provided, default to 0.5
-        if kwargs.get('mth_smooth') is not None:
-            frac = (kwargs['mth_smooth']/len(da.time))
-        else:
-            frac = (4/len(da.time))
-        # Define function being used first
-        da_smooth = xr.apply_ufunc(loess_xarray, 
-                                   # Pass arguments needed by function being applied
-                                   da, da.time, kwargs = {'frac': frac},
-                                   # Dimensions the function needs for each argument (i.e.,
-                                   # the function will be applied along the time dimension)
-                                   input_core_dims = [['time'], ['time']], 
-                                   # Dimensions of each output from the function
-                                   output_core_dims = [['time']],
-                                   # Allows function needs to applied along time dimension
-                                   # (i.e., one lat and lon at a time)
-                                   vectorize = True,
-                                   # Parallise function using Dask
-                                   dask = 'parallelized',
-                                   # Allow rechunking of data if needed
-                                   dask_gufunc_kwargs = {'allow_rechunk': True},
-                                   # Define the type of object the function will return
-                                   output_dtypes = [float]).load()
-        # Add metadata record about smoothing step
-        da_smooth.attrs['fishmip_postprocess'] = f'LOESS smooth applied to data, span = {frac}'
-        # Add variable name
-        da_smooth.name = var
-        # Rechunk data before saving
-        da_smooth = da_smooth.chunk({'time': -1, 'lat': -1, 'lon': -1})
-        # Add info about postprocessing to file name
-        path_out = path_out.replace('_monthly_', '_monthly-smoothed_')
-
-    #Save results
-    if loess_smooth:
-        da_smooth.to_zarr(path_out, consolidated = True, mode = 'w')
-    else:
-        da.to_zarr(path_out, consolidated = True, mode = 'w')
+    
+    #Save subsetted data
+    da.to_zarr(path_out, consolidated = True, mode = 'w')
 
 
 ## Calculating area weighted means
@@ -225,7 +333,7 @@ def getExportRatio(folder_gridded_data, gfdl_exp):
     Inputs:
     - folder_gridded_data (character) File path pointing to folder containing
     zarr files with GFDL data for the region of interest
-    - gfdl_exp (character) Select 'ctrl_clim' or 'obs_clim'
+    - gfdl_exp (character) Select GFDL experiment 'ctrl_clim' or 'obs_clim'
 
     Outputs:
     - sphy (data array) Contains small phytoplankton. This is data frame simply
@@ -235,27 +343,34 @@ def getExportRatio(folder_gridded_data, gfdl_exp):
     - er (data array) Contains export ratio
     '''
 
-    #Get list of files in experiment
-    file_list = glob(os.path.join(folder_gridded_data, f'*_{gfdl_exp}_*'))
-    
     #Load sea surface temperature
-    tos = xr.open_zarr([f for f in file_list if '_tos_' in f][0])['tos']
+    tos = xr.open_zarr(glob(
+        os.path.join(folder_gridded_data, f'*{gfdl_exp}_tos_*'))[0])['tos']
     
     #load depth
-    depth = xr.open_zarr([f for f in file_list if '_deptho_' in f][0])['deptho']
+    depth = xr.open_zarr(glob(
+        os.path.join(folder_gridded_data, f'*{gfdl_exp}_deptho_*'))[0])['deptho']
     
     #Load phypico-vint
-    sphy = xr.open_zarr([f for f in file_list if '_phypico-vint_' in f][0])['phypico-vint']
+    sphy = xr.open_zarr(glob(
+        os.path.join(folder_gridded_data, 
+                     f'*{gfdl_exp}_phypico-vint_*'))[0])['phypico-vint']
     #Rename phypico-vint to sphy
     sphy.name = 'sphy'
+    sphy = sphy.assign_attrs({'short_name': 'sphy',
+                              'long_name': 'Small phytoplankton carbon content'})
 
     #Load phyc-vint
-    ptotal = xr.open_zarr([f for f in file_list if '_phyc-vint_' in f][0])['phyc-vint']
+    ptotal = xr.open_zarr(glob(
+        os.path.join(folder_gridded_data, f'*{gfdl_exp}_phyc-vint_*'))[0])['phyc-vint']
 
     #Calculate large phytoplankton
     lphy = ptotal-sphy
     #Give correct name to large phytoplankton dataset
     lphy.name = 'lphy'
+    lphy = lphy.assign_attrs(ptotal.attrs)
+    lphy = lphy.assign_attrs({'short_name': 'lphy',
+                              'long_name': 'Large phytoplankton carbon content'})
 
     #Calculate phytoplankton size ratios
     plarge = lphy/ptotal
@@ -269,20 +384,28 @@ def getExportRatio(folder_gridded_data, gfdl_exp):
     #If values are above 1, assign a value of 1
     er = xr.where(er > 1, 1, er)
     er.name = 'export_ratio'
+    er = er.assign_attrs({'short_name': 'export_ratio',
+                          'long_name': 'Export ratio of organic matter expressed',
+                          'units': 'mol m-2'})
     
     return sphy, lphy, er
 
 
 #Calculate slope and intercept
-def GetPPIntSlope(file_paths, mmin = 10**(-14.25), mmid = 10**(-10.184), 
+def GetPPIntSlope(gfdl_folder, gfdl_exp, mmin = 10**(-14.25), mmid = 10**(-10.184), 
                   mmax = 10**(-5.25), output = 'both'):
     '''
     Inputs:
-    - file_paths (list) File paths pointing to zarr files from which slope and
-    intercept will be calculated
-    - mmin (numeric)  Default is 10**(-14.25). ????
-    - mmid (numeric)  Default is 10**(-10.184). ????
-    - mmax (numeric)  Default is 10**(-5.25). ????
+    - gfdl_folder (character) File path pointing to folder containing
+    zarr files with GFDL data for the region of interest
+    - gfdl_exp (character) Select GFDL experiment 'ctrl_clim' or 'obs_clim'
+    - mmin (numeric)  Default is 10**(-14.25). Minimum body mass of primary
+    producers representing phycophytoplankton
+    - mmid (numeric)  Default is 10**(-10.184). Body mass of primary producers
+    representing limit between phycophytoplankton (small phytoplankton) and 
+    microphytoplankton (large phytoplankton)
+    - mmax (numeric)  Default is 10**(-5.25). Maximum body mas of primary producers
+    representing microphytoplankton
     - output (character) Default is 'both'. Select what outputs should be returned. 
     Choose from 'both', 'slope', or 'intercept'
 
@@ -291,10 +414,12 @@ def GetPPIntSlope(file_paths, mmin = 10**(-14.25), mmid = 10**(-10.184),
     '''
     
     #load large phytoplankton
-    lphy = xr.open_zarr([f for f in file_paths if '_lphy_' in f][0])['lphy']
+    lphy = xr.open_zarr(glob(os.path.join(gfdl_folder, 
+                                          f'*{gfdl_exp}_lphy_*'))[0])['lphy']
     
     #Load small phytoplankton
-    sphy = xr.open_zarr([f for f in file_paths if '_sphy_' in f][0])['sphy']
+    sphy = xr.open_zarr(glob(os.path.join(gfdl_folder, 
+                                          f'*{gfdl_exp}_sphy_*'))[0])['sphy']
     
     #Convert sphy and lphy from mol C / m^3 to g C / m^3
     sphy = sphy*12.0107
@@ -305,7 +430,7 @@ def GetPPIntSlope(file_paths, mmin = 10**(-14.25), mmid = 10**(-10.184),
     #the exponent b (also equivalent to the slope b in a log B vs log M 
     #relationship) can be assumed:
     #0.25 (results in N ~ M^-3/4) or 0 (results in N ~ M^-1)
-    # most studies seem to suggest N~M^-1, so can assume that and test 
+    #most studies seem to suggest N~M^-1, so can assume that and test 
     #sensitivity of our results to this assumption. 
       
     #Calculate a and b in log B (log10 abundance) vs. log M (log10 gww)
@@ -319,32 +444,44 @@ def GetPPIntSlope(file_paths, mmin = 10**(-14.25), mmid = 10**(-10.184),
     large = np.log10((lphy*10)/(10**midlarge))
 
     #Calculating lope
-    b = (small-large)/(midsmall-midlarge)
-    b.name = 'slope'
+    slope = (small-large)/(midsmall-midlarge)
+    slope.name = 'slope'
+    slope = slope.assign_attrs({'short_name': 'slope',
+                        'long_name': 'Slope of primary producer spectrum',
+                        'comment': 
+                        ('Calculations described in full in Woodworth-'+ 
+                         'Jefcoats et al 2013 (DOI: 10.1111/gcb.12076)'),
+                        'units': 'TBA'})
 
     #a is really log10(a), same a when small, midsmall are used
-    a = large-(b*midlarge)
-    a.name = 'intercept'
+    intercept = large-(slope*midlarge)
+    intercept.name = 'intercept'
+    intercept = intercept.assign_attrs({'short_name': 'intercept',
+                        'long_name': 'Intercept of primary producer spectrum',
+                        'comment': 
+                        ('Calculations described in full in Woodworth-'+ 
+                         'Jefcoats et al 2013 (DOI: 10.1111/gcb.12076)'),
+                        'units': 'TBA'})
 
     # a could be used directly to replace 10^pp in sizemodel()
     if output == 'slope':
-        return b
+        return slope
     if output == 'intercept':
-        return a
+        return intercept
     if output == 'both':
-        return a, b
+        return intercept, slope
 
 
 # Calculate spinup from gridded data
-def gridded_spinup(file_path, start_spin, end_spin, spinup_period, 
+def gridded_spinup(file_path, start_spin, end_spin, spinup_period,
                    mean_spinup = False, **kwargs):
     '''
     Inputs:
     - file_path (character) File path pointing to zarr file from which spinup
     will be calculated
-    - start_spin (character or numeric) Year or date spinup starts
-    - end_spin (character or numeric) Year or date spinup ends
-    - spinup_period (pandas Datetime array) New time labels for spinup period.
+    - start_spin (character or numeric) Year or date spinup calculation starts
+    - end_spin (character or numeric) Year or date spinup calculation ends
+     - spinup_period (pandas Datetime array) New time labels for spinup period.
     Must be a multiple of spinup range (i.e., difference between start and end
     spin)
     - mean_spinup (boolean) Default is False. If set to True, then the spinup
@@ -356,7 +493,7 @@ def gridded_spinup(file_path, start_spin, end_spin, spinup_period,
     spinup_da (data array) Spinup data containing information within spinup
     range
     '''
-    
+
     #Loading data
     da = xr.open_zarr(file_path)
     #Getting name of variable contained in dataset
@@ -375,7 +512,7 @@ def gridded_spinup(file_path, start_spin, end_spin, spinup_period,
     spinup_da['time'] = spinup_period
     
     #Updating chunks
-    spinup_da = spinup_da.chunk({'time': '50MB', 'lat': 100, 'lon': 240})
+    spinup_da = spinup_da.chunk({'time': '500MB', 'lat': -1, 'lon': -1})
     spinup_da = spinup_da.drop_encoding()
 
     #Save result if path is provided
@@ -712,8 +849,7 @@ def loading_dbpm_biomass_inputs(data_folder, init_time = None):
 
 
 # Loading initialising values for gridded DBPM biomass ------
-def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None, fishing = True,
-                                smoothed = False):
+def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None, fishing = True):
     '''
     Inputs:
     - gridded_esm (character) Full path to folder where processed DBPM inputs are stored
@@ -721,46 +857,36 @@ def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None, fishing = True
     DBPM runs. If set to None, DBPM is run from the beginning
     - fishing (boolean) Default is True. It indicates whether or not fishing effort 
     should be included in the dynamic inputs dataset
-    - smoothed (boolean) Default is None. It indicates if "smoothed" inputs should be
-    used in the DBPM run.
-
+    
     Outputs:
     - ds_dynamic (xarray Dataset) Contains dynamic gridded inputs needed to run DBPM
     '''
 
-    if smoothed:
-        fn_search = '_monthly-smoothed_'
-    else:
-        fn_search = '_monthly_'
-        
     #Load data
-    [ui0_search] = glob(os.path.join(gridded_folder, 
-                                   f'ui0_spinup_obsclim*{fn_search}*'))
+    [ui0_search] = glob(os.path.join(gridded_folder, 'ui0_spinup_obsclim*'))
     ui0 = xr.open_zarr(ui0_search, chunks = {'time': -1, 'lon': -1, 
                                              'lat': -1})['ui0']
 
-    slope_search = [f for f in glob(
-        os.path.join(gridded_folder, f'*_slope_*{fn_search}*')) 
+    slope_search = [f for f in glob(os.path.join(gridded_folder, '*_slope_*')) 
                     if 'ctrlclim' not in f]
     slope = xr.open_mfdataset(
         slope_search, engine = 'zarr', 
         parallel = True)['slope'].chunk({'time': -1, 'lon': -1, 'lat': -1})
     
-    [pel_temp_search] = glob(os.path.join(
-        gridded_folder, f'pel-temp-eff_spinup_obsclim*{fn_search}*'))
+    [pel_temp_search] = glob(os.path.join(gridded_folder,
+                                          'pel-temp-eff_spinup_obsclim*'))
     pel_tempeffect = xr.open_zarr(
         pel_temp_search, chunks = {'time': -1, 'lon': -1, 
                                    'lat': -1})['pel_temp_eff']
     
-    [ben_temp_search] = glob(os.path.join(
-        gridded_folder, f'ben-temp-eff_spinup_obsclim*{fn_search}*'))
+    [ben_temp_search] = glob(os.path.join(gridded_folder, 
+                                          'ben-temp-eff_spinup_obsclim*'))
     ben_tempeffect = xr.open_zarr(
         ben_temp_search, chunks = {'time': -1, 'lon': -1, 
                                    'lat': -1})['ben_temp_eff']
 
-    sinking_rate_search = [f for f in glob(
-        os.path.join(gridded_folder, f'*_er_*{fn_search}*')) 
-                    if 'ctrlclim' not in f]
+    sinking_rate_search = [f for f in glob(os.path.join(gridded_folder, '*_er_*')) 
+                           if 'ctrlclim' not in f]
     sinking_rate = xr.open_mfdataset(
         sinking_rate_search, engine = 'zarr', 
         parallel = True)['export_ratio'].chunk({'time': -1, 'lon': -1, 'lat': -1})
@@ -1387,7 +1513,7 @@ def tot_biomass_calc(gridded_params, dbpm_fixed_inputs, group, biomass_current,
 # Run model per grid cell or averaged over an area ------
 def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs, 
                       dbpm_dynamic_inputs, region, model_res, out_folder, 
-                      force_positive = True, weekly = False):
+                      weekly = False, force_finite = True):
     '''
     Inputs:
     - gridded_params (dictionary) Gridded DBPM parameters obtained in step 04.
@@ -1402,6 +1528,8 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     - model_res (character) Spatial resolution of DBPM inputs (as included in folder
     and file names)
     - out_folder (character) Full path to folder where DBPM outputs will be stored
+    - weekly (boolean) Default is False. If set to True, the model will run at weekly
+    timesteps
 
     Outputs:
     - None. This function does not return any objects. Instead outputs are saved in
@@ -1503,6 +1631,11 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                 gridded_params['timesteps_years']).load()
     # detritus = (dbpm_init_inputs['detritus']*det_pool['dW']).load()
 
+    #If values are negative, assign a value of 0
+    detritus = xr.where(detritus < 0, 0, detritus)
+    if force_finite:
+        detritus = detritus.where(np.isfinite(detritus))
+        
     # Updating timestamp (results for next time step)
     detritus['time'] = [dbpm_time]
     #Adding name
@@ -1536,8 +1669,9 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                                  total_mortality = mortality_pred['Z_u']).load()
     
     #If values are negative, assign a value of 0
-    if force_positive:
-        predators = xr.where(predators < 0, 0, predators)
+    predators = xr.where(predators < 0, 0, predators)
+    if force_finite:
+        predators = predators.where(np.isfinite(predators))
     
     # Saving predators biomass
     # Creating file name
@@ -1567,9 +1701,10 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                                     reprod_rate = reprod_det['R_v'],
                                     growth_rate = growth_rates_pred_det['GG_v'], 
                                     total_mortality = mortality_det['Z_v']).load()
-    if force_positive:
-        #If values are negative, assign a value of 0
-        detritivores = xr.where(detritivores < 0, 0, detritivores)
+    #If values are negative, assign a value of 0
+    detritivores = xr.where(detritivores < 0, 0, detritivores)
+    if force_finite:
+        detritivores = detritivores.where(np.isfinite(detritivores))
     
     # Saving detritivores biomass
     fn = f'detritivores_{model_res}_{region}_{pred_ts_next}.nc'
