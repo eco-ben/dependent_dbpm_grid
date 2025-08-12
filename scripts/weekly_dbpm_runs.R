@@ -26,6 +26,21 @@ fishing_params <- read_parquet(list.files(file.path(base_folder, f,
   mutate(fmort_u = 0, fmort_v = 0)
 
 
+# Weekly dates - Two columns - dates matching first day of month and 
+# new dates not forced to start month at 01
+new_ts <- data.frame(new_time = seq(as_date("1741-01-01"), as_date("2010-12-31"), 
+                                by = "week")) |> 
+  mutate(year = year(new_time), month = month(new_time, label = T, abbr = F), 
+         day = day(new_time)) |> 
+  group_by(year, month) |> 
+  mutate(time = case_when(day == min(day) ~ ymd(paste(year, month, "01", 
+                                                      sep = "-")), 
+                          T ~ new_time))
+
+new_ts |> 
+  write_csv_arrow("scripts/weekly_dates.csv")
+
+
 
 # Outlier grid cell -------------------------------------------------------
 #Input data from outlier grid cell
