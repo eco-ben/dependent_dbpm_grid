@@ -26,15 +26,20 @@ def netcdf_to_zarr(file_path, path_out):
     - None. This function saves results as zarr files in the path provided.
     '''
 
-    #Loading and rechunking data
-    da = xr.open_dataarray(file_path, chunks = {'lat': '50MB', 'lon': '50MB'})
+    # Loading and rechunking data
+    da = xr.open_dataarray(file_path)
 
-    #Change date format
-    try:
-        da['time'] = pd.DatetimeIndex(da.indexes['time'].to_datetimeindex(),
-                                      dtype = 'datetime64[ns]')
-    except:
-        pass
+    # Rechunking before saving 
+    if 'time' in da.dims:
+        da = da.chunk({'time': '500MB', 'lat': -1, 'lon': -1})
+        # Change date format to DateTimeIndex if needed
+        try:
+            da['time'] = pd.DatetimeIndex(da.indexes['time'].to_datetimeindex(),
+                                          dtype = 'datetime64[ns]')
+        except:
+            pass
+    else:
+        da = da.chunk({'lat': -1, 'lon': -1})
 
     #Save results
     da.to_zarr(path_out, consolidated = True, mode = 'w')
@@ -146,6 +151,13 @@ def stl_xarray(da, **kwargs):
     Outputs:
     res - Specified STL component
     '''
+    #Get data into correct format to use an input in STL function
+    data_vals = np.asarray(da)
+
+    #If more than half the values are NAs, then return NAs
+    if np.isnan(data_vals).sum() > len(data_vals)*0.5:
+        return np.full_like(data_vals, np.nan)
+    
     if kwargs.get('period') is not None:
         period = kwargs['period']
     else:
@@ -156,7 +168,7 @@ def stl_xarray(da, **kwargs):
     else:
         component = 'seasonal'
     
-    data_vals = np.asarray(da)
+    #Seasonal trend decomposition
     res = STL(data_vals, period = period).fit()
     if component == 'trend':
         return res.trend
@@ -189,9 +201,12 @@ def seasonal_decomposition(file_path, path_out, period, component):
     # Use apply_ufunc to apply the wrapper function across spatial dimensions
     da_comp = xr.apply_ufunc(stl_xarray, da, 
                              kwargs = {'period': period, 'component': component},
-                             input_core_dims = [['time']], output_core_dims = [['time']],
+                             input_core_dims = [['time']], 
+                             output_core_dims = [['time']],
                              dask = 'parallelized', vectorize = True, 
-                             output_dtypes = [da.dtype]).load()
+                             output_dtypes = [da.dtype],
+                             # Allow rechunking of data if needed
+                             dask_gufunc_kwargs = {'allow_rechunk': True}).load()
 
     #Remove calculated component from original data
     da_decomp = da-da_comp
@@ -318,7 +333,7 @@ def getExportRatio(folder_gridded_data, gfdl_exp):
     Inputs:
     - folder_gridded_data (character) File path pointing to folder containing
     zarr files with GFDL data for the region of interest
-    - gfdl_exp (character) Select 'ctrl_clim' or 'obs_clim'
+    - gfdl_exp (character) Select GFDL experiment 'ctrl_clim' or 'obs_clim'
 
     Outputs:
     - sphy (data array) Contains small phytoplankton. This is data frame simply
@@ -328,27 +343,34 @@ def getExportRatio(folder_gridded_data, gfdl_exp):
     - er (data array) Contains export ratio
     '''
 
-    #Get list of files in experiment
-    file_list = glob(os.path.join(folder_gridded_data, f'*_{gfdl_exp}_*'))
-    
     #Load sea surface temperature
-    tos = xr.open_zarr([f for f in file_list if '_tos_' in f][0])['tos']
+    tos = xr.open_zarr(glob(
+        os.path.join(folder_gridded_data, f'*{gfdl_exp}_tos_*'))[0])['tos']
     
     #load depth
-    depth = xr.open_zarr([f for f in file_list if '_deptho_' in f][0])['deptho']
+    depth = xr.open_zarr(glob(
+        os.path.join(folder_gridded_data, f'*{gfdl_exp}_deptho_*'))[0])['deptho']
     
     #Load phypico-vint
-    sphy = xr.open_zarr([f for f in file_list if '_phypico-vint_' in f][0])['phypico-vint']
+    sphy = xr.open_zarr(glob(
+        os.path.join(folder_gridded_data, 
+                     f'*{gfdl_exp}_phypico-vint_*'))[0])['phypico-vint']
     #Rename phypico-vint to sphy
     sphy.name = 'sphy'
+    sphy = sphy.assign_attrs({'short_name': 'sphy',
+                              'long_name': 'Small phytoplankton carbon content'})
 
     #Load phyc-vint
-    ptotal = xr.open_zarr([f for f in file_list if '_phyc-vint_' in f][0])['phyc-vint']
+    ptotal = xr.open_zarr(glob(
+        os.path.join(folder_gridded_data, f'*{gfdl_exp}_phyc-vint_*'))[0])['phyc-vint']
 
     #Calculate large phytoplankton
     lphy = ptotal-sphy
     #Give correct name to large phytoplankton dataset
     lphy.name = 'lphy'
+    lphy = lphy.assign_attrs(ptotal.attrs)
+    lphy = lphy.assign_attrs({'short_name': 'lphy',
+                              'long_name': 'Large phytoplankton carbon content'})
 
     #Calculate phytoplankton size ratios
     plarge = lphy/ptotal
@@ -362,20 +384,28 @@ def getExportRatio(folder_gridded_data, gfdl_exp):
     #If values are above 1, assign a value of 1
     er = xr.where(er > 1, 1, er)
     er.name = 'export_ratio'
+    er = er.assign_attrs({'short_name': 'export_ratio',
+                          'long_name': 'Export ratio of organic matter expressed',
+                          'units': 'mol m-2'})
     
     return sphy, lphy, er
 
 
 #Calculate slope and intercept
-def GetPPIntSlope(file_paths, mmin = 10**(-14.25), mmid = 10**(-10.184), 
+def GetPPIntSlope(gfdl_folder, gfdl_exp, mmin = 10**(-14.25), mmid = 10**(-10.184), 
                   mmax = 10**(-5.25), output = 'both'):
     '''
     Inputs:
-    - file_paths (list) File paths pointing to zarr files from which slope and
-    intercept will be calculated
-    - mmin (numeric)  Default is 10**(-14.25). ????
-    - mmid (numeric)  Default is 10**(-10.184). ????
-    - mmax (numeric)  Default is 10**(-5.25). ????
+    - gfdl_folder (character) File path pointing to folder containing
+    zarr files with GFDL data for the region of interest
+    - gfdl_exp (character) Select GFDL experiment 'ctrl_clim' or 'obs_clim'
+    - mmin (numeric)  Default is 10**(-14.25). Minimum body mass of primary
+    producers representing phycophytoplankton
+    - mmid (numeric)  Default is 10**(-10.184). Body mass of primary producers
+    representing limit between phycophytoplankton (small phytoplankton) and 
+    microphytoplankton (large phytoplankton)
+    - mmax (numeric)  Default is 10**(-5.25). Maximum body mas of primary producers
+    representing microphytoplankton
     - output (character) Default is 'both'. Select what outputs should be returned. 
     Choose from 'both', 'slope', or 'intercept'
 
@@ -384,10 +414,12 @@ def GetPPIntSlope(file_paths, mmin = 10**(-14.25), mmid = 10**(-10.184),
     '''
     
     #load large phytoplankton
-    lphy = xr.open_zarr([f for f in file_paths if '_lphy_' in f][0])['lphy']
+    lphy = xr.open_zarr(glob(os.path.join(gfdl_folder, 
+                                          f'*{gfdl_exp}_lphy_*'))[0])['lphy']
     
     #Load small phytoplankton
-    sphy = xr.open_zarr([f for f in file_paths if '_sphy_' in f][0])['sphy']
+    sphy = xr.open_zarr(glob(os.path.join(gfdl_folder, 
+                                          f'*{gfdl_exp}_sphy_*'))[0])['sphy']
     
     #Convert sphy and lphy from mol C / m^3 to g C / m^3
     sphy = sphy*12.0107
@@ -398,7 +430,7 @@ def GetPPIntSlope(file_paths, mmin = 10**(-14.25), mmid = 10**(-10.184),
     #the exponent b (also equivalent to the slope b in a log B vs log M 
     #relationship) can be assumed:
     #0.25 (results in N ~ M^-3/4) or 0 (results in N ~ M^-1)
-    # most studies seem to suggest N~M^-1, so can assume that and test 
+    #most studies seem to suggest N~M^-1, so can assume that and test 
     #sensitivity of our results to this assumption. 
       
     #Calculate a and b in log B (log10 abundance) vs. log M (log10 gww)
@@ -412,32 +444,44 @@ def GetPPIntSlope(file_paths, mmin = 10**(-14.25), mmid = 10**(-10.184),
     large = np.log10((lphy*10)/(10**midlarge))
 
     #Calculating lope
-    b = (small-large)/(midsmall-midlarge)
-    b.name = 'slope'
+    slope = (small-large)/(midsmall-midlarge)
+    slope.name = 'slope'
+    slope = slope.assign_attrs({'short_name': 'slope',
+                        'long_name': 'Slope of primary producer spectrum',
+                        'comment': 
+                        ('Calculations described in full in Woodworth-'+ 
+                         'Jefcoats et al 2013 (DOI: 10.1111/gcb.12076)'),
+                        'units': 'TBA'})
 
     #a is really log10(a), same a when small, midsmall are used
-    a = large-(b*midlarge)
-    a.name = 'intercept'
+    intercept = large-(slope*midlarge)
+    intercept.name = 'intercept'
+    intercept = intercept.assign_attrs({'short_name': 'intercept',
+                        'long_name': 'Intercept of primary producer spectrum',
+                        'comment': 
+                        ('Calculations described in full in Woodworth-'+ 
+                         'Jefcoats et al 2013 (DOI: 10.1111/gcb.12076)'),
+                        'units': 'TBA'})
 
     # a could be used directly to replace 10^pp in sizemodel()
     if output == 'slope':
-        return b
+        return slope
     if output == 'intercept':
-        return a
+        return intercept
     if output == 'both':
-        return a, b
+        return intercept, slope
 
 
 # Calculate spinup from gridded data
-def gridded_spinup(file_path, start_spin, end_spin, spinup_period, 
+def gridded_spinup(file_path, start_spin, end_spin, spinup_period,
                    mean_spinup = False, **kwargs):
     '''
     Inputs:
     - file_path (character) File path pointing to zarr file from which spinup
     will be calculated
-    - start_spin (character or numeric) Year or date spinup starts
-    - end_spin (character or numeric) Year or date spinup ends
-    - spinup_period (pandas Datetime array) New time labels for spinup period.
+    - start_spin (character or numeric) Year or date spinup calculation starts
+    - end_spin (character or numeric) Year or date spinup calculation ends
+     - spinup_period (pandas Datetime array) New time labels for spinup period.
     Must be a multiple of spinup range (i.e., difference between start and end
     spin)
     - mean_spinup (boolean) Default is False. If set to True, then the spinup
@@ -449,7 +493,7 @@ def gridded_spinup(file_path, start_spin, end_spin, spinup_period,
     spinup_da (data array) Spinup data containing information within spinup
     range
     '''
-    
+
     #Loading data
     da = xr.open_zarr(file_path)
     #Getting name of variable contained in dataset
@@ -468,7 +512,7 @@ def gridded_spinup(file_path, start_spin, end_spin, spinup_period,
     spinup_da['time'] = spinup_period
     
     #Updating chunks
-    spinup_da = spinup_da.chunk({'time': '50MB', 'lat': 100, 'lon': 240})
+    spinup_da = spinup_da.chunk({'time': '500MB', 'lat': -1, 'lon': -1})
     spinup_da = spinup_da.drop_encoding()
 
     #Save result if path is provided
@@ -1589,7 +1633,6 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
 
     #If values are negative, assign a value of 0
     detritus = xr.where(detritus < 0, 0, detritus)
-    # if np.isinf(detritus).sum() > 0:
     if force_finite:
         detritus = detritus.where(np.isfinite(detritus))
         
@@ -1627,7 +1670,6 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     
     #If values are negative, assign a value of 0
     predators = xr.where(predators < 0, 0, predators)
-    # if np.isinf(predators).sum() > 0:
     if force_finite:
         predators = predators.where(np.isfinite(predators))
     
@@ -1661,7 +1703,6 @@ def gridded_sizemodel(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                                     total_mortality = mortality_det['Z_v']).load()
     #If values are negative, assign a value of 0
     detritivores = xr.where(detritivores < 0, 0, detritivores)
-    # if np.isinf(detritivores).sum() > 0:
     if force_finite:
         detritivores = detritivores.where(np.isfinite(detritivores))
     
