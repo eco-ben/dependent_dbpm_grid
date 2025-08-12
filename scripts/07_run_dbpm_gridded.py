@@ -19,27 +19,36 @@ if __name__ == '__main__':
     client = Client(threads_per_worker = 1, memory_limit = 0)
     
     ## Name of region and model resolution ----
-    reg = 'fao-47'
+    reg = 'fao-34'
     res = '1deg'
 
     ## Define if run should include fishing ----
     fishing = True
-    ## Define if smoothed inputs should be used ----
-    smoothed = True
-
+    # Choose whether smoothing of inputs will be performed by LOESS (smoothed) or
+    # deseasoning data (deseasoned)
+    smoothing = 'deseasoned'
     ## If starting DBPM run from a specific time step ----
     # Character: Year and month from when DBPM initialisation values should be loaded
     # If starting model for the first time, it should be set to None
-    init_time = None
+    init_time = '1963-06'
+
+    # Set variables to find correct input files based on 'smoothing' variable - Also
+    # used to name processed inputs
+    # Create variables based on 'smoothing' selection
+    if smoothing != None:
+        smoothing = f'-{smoothing}'
+    else:
+        smoothing = ''
 
     ## Defining input and output folders ----
     base_folder = '/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs'
     base_out_folder = '/g/data/vf71/fishmip_outputs/ISIMIP3a/fao_outputs'
     
     #Location of gridded inputs
-    gridded_folder = os.path.join(base_folder, reg, 'gridded', res)
+    gridded_folder = os.path.join(base_folder, reg, f'gridded{smoothing}', res)
+
     #Folder where outputs will be stored 
-    out_folder = os.path.join(base_out_folder, reg, 'fishing_runs-smoothed', res)
+    out_folder = os.path.join(base_out_folder, reg, f'fishing_runs{smoothing}', res)
     #If output folder does not exist, it will create it
     os.makedirs(out_folder, exist_ok = True) 
     
@@ -62,8 +71,7 @@ if __name__ == '__main__':
     
     ## Loading dynamic data ----
     ds_dynamic = uf.loading_dbpm_dynamic_inputs(gridded_folder, init_time, 
-                                                fishing = fishing,
-                                                smoothed = smoothed)
+                                                fishing = fishing)
   
     if init_time is not None and fishing:
         #Timestep from when to restart DBPM 
@@ -86,8 +94,8 @@ if __name__ == '__main__':
     
     #Gridded parameters
     gridded_params = json.load(open(
-        os.path.join(base_folder, reg, 'fishing_params', res, 
-                     'best_fish_vals', 
+        os.path.join(base_folder, reg, 'init_fish_vals', res, 
+                     f'best_fish_vals{smoothing}', 
                      f'dbpm_gridded_size_params_{reg}_python.json')))
 
     ## Running spatial DBPM ----
@@ -121,5 +129,5 @@ if __name__ == '__main__':
         
         ds_init = uf.gridded_sizemodel(gridded_params, ds_fixed, ds_init, 
                                        ds_dyn, region = reg, model_res = res, 
-                                       out_folder = out_folder, force_positive = True)
+                                       out_folder = out_folder)
 
