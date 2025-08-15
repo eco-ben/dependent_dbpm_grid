@@ -42,7 +42,7 @@ for(f in fao){
                                   forcing_file = dbpm_inputs, 
                                   gridded_forcing = NULL, 
                                   best_val_folder = results_folder, 
-                                  best_param = F, new_detritus_calc = F) |> 
+                                  best_param = F) |> 
     rowid_to_column("id")
   
   ## Creating plots with fishing parameters calculated above --------------
@@ -50,7 +50,7 @@ for(f in fao){
   # plot
   params_corr <- params_calibration |> 
     split(params_calibration$id) |>
-    map_df(\(x) getError(x, dbpm_inputs, corr = T, new_detritus_calc = F)) 
+    map_df(\(x) getError(x, dbpm_inputs, corr = T)) 
   
   #Adding correlation to fishing parameter data frame
   params_calibration <- params_calibration |> 
@@ -82,13 +82,12 @@ for(f in fao){
   }
   #Create plot with best performing parameters
   good |> 
-    corr_calib_plots(dbpm_inputs, results_folder, new_detritus_calc = F)
+    corr_calib_plots(dbpm_inputs, results_folder)
   
   # Calibration plots with parameters that had highest correlation values
   params_calibration |> 
     slice(1) |>
-    corr_calib_plots(dbpm_inputs, file.path(results_folder, "high_corr"),
-                     new_detritus_calc = F)
+    corr_calib_plots(dbpm_inputs, file.path(results_folder, "high_corr"))
 }
 
 
@@ -137,13 +136,12 @@ for(f in bad_params){
                                         forcing_file = dbpm_inputs, 
                                         gridded_forcing = NULL, 
                                         best_val_folder = results_folder, 
-                                        best_param = F, 
-                                        new_detritus_calc = F) |> 
+                                        best_param = F) |> 
     rowid_to_column("id")
   
   params_corr <- params_calibration_optim |> 
     split(params_calibration_optim$id) |>
-    map_df(\(x) getError(x, dbpm_inputs, corr = T, new_detritus_calc = F))
+    map_df(\(x) getError(x, dbpm_inputs, corr = T))
   
   #Adding correlation to fishing parameter data frame
   params_calibration_optim <- params_calibration_optim |> 
@@ -172,13 +170,12 @@ for(f in bad_params){
   }
   
   #Create calibration plot
-  corr_calib_plots(good, dbpm_inputs, results_folder, new_detritus_calc = F)
+  corr_calib_plots(good, dbpm_inputs, results_folder)
   
   #Create plot with parameters that resulted in highest correlation
   params_calibration_optim |>
     filter(cor == max(cor)) |> 
-    corr_calib_plots(dbpm_inputs, file.path(results_folder, "high_corr"),
-                     new_detritus_calc = F)
+    corr_calib_plots(dbpm_inputs, file.path(results_folder, "high_corr"))
 }
 
 
@@ -235,8 +232,7 @@ for(f in fao){
     # Run non-spatial DBPM.  This step is necessary to get the initial 
     # conditions to be used in the gridded DBPM
     init_results <- run_model(fish_param, dbpm_inputs, withinput = F, 
-                              new_detritus_calc = F, xmin_consumer_u = -3,
-                              xmin_consumer_v = -3)
+                              xmin_consumer_u = -3, xmin_consumer_v = -3)
     
     # Prepare fishing parameters for gridded DBPM 
     pred_initial <- rowMeans(init_results$predators)
@@ -270,8 +266,8 @@ for(f in fao){
   fout <- file.path(dbpm_out_folder, 
                     paste0("dbpm_nonspatial_", f, "_1841-2010.parquet"))
   if(!file.exists(fout)){
-    run_model(fish_param, dbpm_inputs, new_detritus_calc = F,
-              xmin_consumer_u = -3, xmin_consumer_v = -3) |> 
+    run_model(fish_param, dbpm_inputs, xmin_consumer_u = -3, 
+              xmin_consumer_v = -3) |> 
       write_parquet(fout)
   }
 }
