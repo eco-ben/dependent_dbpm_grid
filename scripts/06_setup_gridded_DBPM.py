@@ -11,8 +11,8 @@ import useful_functions as uf
 
 # Defining base variables
 base_folder = '/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs'
-regions = [f for f in os.listdir(base_folder) if 'fao' in f]
-resolutions = ['1deg', '025deg']
+regions = ['fao-34']#[f for f in os.listdir(base_folder) if 'fao' in f]
+resolutions = ['1deg']#, '025deg']
 # Choose whether smoothing of inputs will be performed by LOESS (smoothed) or
 # deseasoning data (deseasoned)
 smoothing = 'deseasoned'
@@ -120,7 +120,7 @@ for reg in regions:
                 coords = {'size_class': log10_size_bins})
             
             # size of individuals found in the model
-            size_bin_vals = 10**log10_size_bins_mat
+            size_bin_vals = (10**log10_size_bins_mat).round(decimals = 6)
             log10_size_bins_mat.name = 'size_bins'
             log10_size_bins_mat.to_zarr(
                 log10_file, consolidated = True, mode = 'w')
@@ -139,7 +139,7 @@ for reg in regions:
 
         #Select first year of spinup data to create stable spinup dataset
         da = (effort_spinup.sel(time = slice('1841-01', '1841-12')).
-              mean('time'))
+              mean('time')).round(decimals = 6)
         effort_stable_spin = [da] * len(spinup_period)
         effort_stable_spin = xr.concat(effort_stable_spin, dim = 'time')
         effort_stable_spin['time'] = spinup_period
@@ -163,13 +163,13 @@ for reg in regions:
                            consolidated = True, mode = 'w')
 
         # Habitat preferences ----
-        pref_benthos = (0.8*np.exp((-1/250*depth)))
+        pref_benthos = (0.8*np.exp((-1/250*depth))).round(decimals = 6)
         pref_benthos.name = 'pref_benthos'
         pref_benthos.to_zarr(os.path.join(
             out_folder, f'pref-benthos_{res_arc}_{reg}_fixed.zarr/'),
                              consolidated = True, mode = 'w')
 
-        pref_pelagic = (1-pref_benthos)
+        pref_pelagic = (1-pref_benthos).round(decimals = 6)
         pref_pelagic.name = 'pref_pelagic'
         pref_pelagic.to_zarr(os.path.join(
             out_folder, 
@@ -179,11 +179,11 @@ for reg in regions:
         # Metabolic requirements ----
         met_req_log10_size_bins = uf.expax_f(
             log10_size_bins_mat,
-            gridded_python['metabolic_req_pred'])
+            gridded_python['metabolic_req_pred']).round(decimals = 6)
 
         consume_pelagic = (pref_pelagic*
                            gridded_python['hr_volume_search']*
-                           met_req_log10_size_bins)
+                           met_req_log10_size_bins).round(decimals = 6)
         consume_pelagic.name = 'consume_pelagic'
         consume_pelagic.to_zarr(os.path.join(
             out_folder, 
@@ -191,7 +191,7 @@ for reg in regions:
                                 consolidated = True, mode = 'w')
         consume_benthos = (pref_benthos*
                            gridded_python['hr_volume_search']*
-                           met_req_log10_size_bins)
+                           met_req_log10_size_bins).round(decimals = 6)
         consume_benthos.name = 'consume_benthos'
         consume_benthos.to_zarr(os.path.join(
             out_folder, 
@@ -204,7 +204,7 @@ for reg in regions:
         constant_growth = xr.DataArray(
             uf.gphi_f(pred_prey_mat, 
                       gridded_python['log10_pred_prey_ratio'],
-                      gridded_python['log_prey_pref']),
+                      gridded_python['log_prey_pref']).round(decimals = 6),
             dims = ['size_class', 'sc'])
         constant_growth.name = 'constant_growth'
         constant_growth.to_zarr(os.path.join(
@@ -215,7 +215,7 @@ for reg in regions:
             uf.mphi_f(-pred_prey_mat, 
                       gridded_python['log10_pred_prey_ratio'],
                       gridded_python['log_prey_pref'],
-                      gridded_python['metabolic_req_pred']),
+                      gridded_python['metabolic_req_pred']).round(decimals = 6),
             dims = ['size_class', 'sc'])
         constant_mortality.name = 'constant_mortality'
         constant_mortality.to_zarr(os.path.join(
@@ -227,7 +227,7 @@ for reg in regions:
                          int_phy_zoo], 
                         dim = 'time').chunk({'lon': -1, 'lat': -1,
                                              'time': -1}).load()
-        ui0_out = 10**ui0
+        ui0_out = (10**ui0).round(decimals = 6)
         ui0_out.name = 'ui0'
         ui0_out.to_zarr(os.path.join(
             out_folder, 
@@ -248,6 +248,8 @@ for reg in regions:
                                   'lon': depth.lon}))
         #Applying spatial mask
         predators = predators.where(np.isfinite(depth))
+        #Round to six decimals to avoid rounding errors
+        predators = predators.round(decimals = 6)
         predators.name = 'predators'
         predators.to_zarr(os.path.join(
             out_folder, 
@@ -269,6 +271,8 @@ for reg in regions:
         detritivores = detritivores.expand_dims({'time': [time_init]})
         #Applying spatial mask
         detritivores = detritivores.where(np.isfinite(depth))
+        #Round to six decimals to avoid rounding errors
+        detritivores = detritivores.round(decimals = 6)
         detritivores.name = 'detritivores'
         detritivores.to_zarr(os.path.join(
             out_folder, 
@@ -282,7 +286,7 @@ for reg in regions:
         # Assigning initial values 
         detritus = xr.where(detritus == 0,
                             gridded_python['init_detritus'], 
-                            detritus)
+                            detritus).round(decimals = 6)
         #Applying spatial mask
         detritus = detritus.where(np.isfinite(depth))
         detritus.name = 'detritus'
@@ -292,7 +296,7 @@ for reg in regions:
 
         # Other intrinsic natural mortality ----
         other_mort = (gridded_python['natural_mort']*
-                      10**(-0.25*log10_size_bins_mat))
+                      10**(-0.25*log10_size_bins_mat)).round(decimals = 6)
         other_mort.name = 'other_mort_pred'
         other_mort.to_zarr(os.path.join(
             out_folder, 
@@ -309,7 +313,7 @@ for reg in regions:
         senes_mort = (gridded_params['const_senescence_mort']*
                       10**(gridded_params['exp_senescence_mort']*
                            (log10_size_bins_mat-
-                            gridded_params['size_senescence'])))
+                            gridded_params['size_senescence']))).round(decimals = 6)
         senes_mort.name = 'senes_mort_pred'
         senes_mort.to_zarr(os.path.join(
             out_folder, 
@@ -336,7 +340,7 @@ for reg in regions:
         fishing_mort_pred = xr.where(
             (fish_mort_pred.size_class >= log10_ind_min_fish_pred) &
             (fish_mort_pred.size_class < fish_mort_pred.size_class.max()),
-            fish_mort_pred, 0).where(np.isfinite(depth))
+            fish_mort_pred, 0).where(np.isfinite(depth)).round(decimals = 6)
         fishing_mort_pred.name = 'fish_mort_pred'
         fishing_mort_pred.to_zarr(os.path.join(
             out_folder,
@@ -357,7 +361,7 @@ for reg in regions:
         fishing_mort_det = xr.where(
             (fish_mort_det.size_class >= log10_ind_min_fish_det) &
             (fish_mort_det.size_class < fish_mort_det.size_class.max()),
-            fish_mort_det, 0).where(np.isfinite(depth))
+            fish_mort_det, 0).where(np.isfinite(depth)).round(decimals = 6)
         fishing_mort_det.name = 'fish_mort_det'
         fishing_mort_det.to_zarr(os.path.join(
             out_folder,
@@ -371,7 +375,7 @@ for reg in regions:
                         dim = 'time')
         pel_tempeffect = np.exp(
             gridded_python['c1']-gridded_python['activation_energy']/
-            (gridded_python['boltzmann']*(sst+273)))
+            (gridded_python['boltzmann']*(sst+273))).round(decimals = 6)
         pel_tempeffect.name = 'pel_temp_eff' 
         pel_tempeffect_out = pel_tempeffect.chunk({'lon': -1, 'lat': -1,
                                                    'time': -1}).load()
@@ -385,7 +389,7 @@ for reg in regions:
                          sea_floor_temp], dim = 'time')
         ben_tempeffect = np.exp(
             gridded_python['c1']-gridded_python['activation_energy']/
-            (gridded_python['boltzmann']*(sbt+273)))
+            (gridded_python['boltzmann']*(sbt+273))).round(decimals = 6)
         ben_tempeffect.name = 'ben_temp_eff'
         ben_tempeffect_out = ben_tempeffect.chunk({'lon': -1, 'lat': -1,
                                                    'time': -1}).load()
