@@ -29,6 +29,9 @@ def netcdf_to_zarr(file_path, path_out):
     # Loading and rechunking data
     da = xr.open_dataarray(file_path)
 
+    #Getting name of variable contained in dataset
+    var = da.name
+
     # Rechunking before saving 
     if 'time' in da.dims:
         da = da.chunk({'time': '500MB', 'lat': -1, 'lon': -1})
@@ -42,7 +45,9 @@ def netcdf_to_zarr(file_path, path_out):
         da = da.chunk({'lat': -1, 'lon': -1})
 
     #Save results
-    da.to_zarr(path_out, consolidated = True, mode = 'w')
+    da.to_zarr(path_out, consolidated = True, mode = 'w',
+               encoding = {var: {'dtype': 'int64', '_FillValue': -99999, 
+                                 'scale_factor': 1e-10}})
 
 
 # Apply LOESS smoothing to gridded data
@@ -134,10 +139,12 @@ def smoothing_loess(file_path, path_out, **kwargs):
     da_smooth.attrs['fishmip_postprocess'] = f'LOESS smooth applied to data, span = {frac}, it = {it}'
     # Add variable name
     da_smooth.name = var
-    #Round to six decimals to avoid rounding errors
-    da_smooth = da_smooth.round(decimals = 6)
+    #Round to 10 decimals to avoid rounding errors
+    da_smooth = da_smooth.round(decimals = 10)
     # Save results
-    da_smooth.to_zarr(path_out, consolidated = True, mode = 'w')
+    da_smooth.to_zarr(path_out, consolidated = True, mode = 'w', 
+                      encoding = {var: {'dtype': 'int64', '_FillValue': -99999, 
+                                        'scale_factor': 1e-10}})
 
 
 # Apply seasonal trend decomposition using LOESS (STL) to gridded data
@@ -217,10 +224,12 @@ def seasonal_decomposition(file_path, path_out, period, component):
     da_decomp.attrs['fishmip_postprocess'] = f'Original data minus {component} component'
     # Add variable name
     da_decomp.name = var
-    #Round to six decimals to avoid rounding errors
-    da_decomp = da_decomp.round(decimals = 6)
+    #Round to 10 decimals to avoid rounding errors
+    da_decomp = da_decomp.round(decimals = 10)
     # Save results
-    da_decomp.to_zarr(path_out, consolidated = True, mode = 'w')
+    da_decomp.to_zarr(path_out, consolidated = True, mode = 'w', 
+                      encoding = {var: {'dtype': 'int64', '_FillValue': -99999, 
+                                        'scale_factor': 1e-10}})
 
     
 ## Extracting GFDL outputs for region of interest using boolean mask
@@ -270,7 +279,9 @@ def extract_gfdl(file_path, mask, path_out, cross_dateline = False):
         da = da.chunk({'lat':-1, 'lon': -1})
     
     #Save subsetted data
-    da.to_zarr(path_out, consolidated = True, mode = 'w')
+    da.to_zarr(path_out, consolidated = True, mode = 'w', 
+               encoding = {var: {'dtype': 'int64', '_FillValue': -99999,
+                                 'scale_factor': 1e-10}})
 
 
 ## Calculating area weighted means
@@ -299,7 +310,7 @@ def weighted_mean_timestep(file_paths, weights, region):
     #Apply weights
     da_weighted = da.weighted(weights)
     #Calculate weighted mean
-    da_weighted_mean = da_weighted.mean(('lat', 'lon')).round(decimals = 6)
+    da_weighted_mean = da_weighted.mean(('lat', 'lon')).round(decimals = 10)
     
     #Transform to data frame
     df = da_weighted_mean.to_dataframe().reset_index()
@@ -361,8 +372,8 @@ def getExportRatio(folder_gridded_data, gfdl_exp):
                      f'*{gfdl_exp}_phypico-vint_*'))[0])['phypico-vint']
     #Rename phypico-vint to sphy
     sphy.name = 'sphy'
-    #Round to six decimals to avoid rounding errors
-    sphy = sphy.round(decimals = 6)
+    #Round to 10 decimals to avoid rounding errors
+    sphy = sphy.round(decimals = 10)
     sphy = sphy.assign_attrs({'short_name': 'sphy',
                               'long_name': 'Small phytoplankton carbon content'})
 
@@ -374,19 +385,19 @@ def getExportRatio(folder_gridded_data, gfdl_exp):
     lphy = ptotal-sphy
     #Give correct name to large phytoplankton dataset
     lphy.name = 'lphy'
-    #Round to six decimals to avoid rounding errors
-    lphy = lphy.round(decimals = 6)
+    #Round to 10 decimals to avoid rounding errors
+    lphy = lphy.round(decimals = 10)
     lphy = lphy.assign_attrs(ptotal.attrs)
     lphy = lphy.assign_attrs({'short_name': 'lphy',
                               'long_name': 'Large phytoplankton carbon content'})
 
     #Calculate phytoplankton size ratios
-    plarge = (lphy/ptotal).round(decimals = 6)
-    psmall = (sphy/ptotal).round(decimals = 6)
+    plarge = (lphy/ptotal).round(decimals = 10)
+    psmall = (sphy/ptotal).round(decimals = 10)
 
     #Calculate export ration
     er = (np.exp(-0.032*tos)*((0.14*psmall)+(0.74*(plarge)))+
-          (0.0228*(plarge)*(depth*0.004)))/(1+(depth*0.004)).round(decimals = 6)
+          (0.0228*(plarge)*(depth*0.004)))/(1+(depth*0.004)).round(decimals = 10)
     #If values are negative, assign a value of 0
     er = xr.where(er < 0, 0, er)
     #If values are above 1, assign a value of 1
@@ -447,29 +458,29 @@ def GetPPIntSlope(gfdl_folder, gfdl_exp, mmin = 10**(-14.25), mmid = 10**(-10.18
     midlarge = np.log10((mmid+mmax)/2)
 
     #convert to log10 (gww/size class median size) for log10 abundance
-    small = (np.log10((sphy*10)/10**midsmall)).round(decimals = 6)
+    small = (np.log10((sphy*10)/10**midsmall)).round(decimals = 10)
     #convert to log10 (gww/size class median size) for log10 abundance
-    large = (np.log10((lphy*10)/10**midlarge)).round(decimals = 6)
+    large = (np.log10((lphy*10)/10**midlarge)).round(decimals = 10)
 
     #Calculating lope
-    slope = ((small-large)/(midsmall-midlarge)).round(decimals = 6)
+    slope = ((small-large)/(midsmall-midlarge)).round(decimals = 10)
     slope.name = 'slope'
-    slope = slope.assign_attrs({'short_name': 'slope',
-                        'long_name': 'Slope of primary producer spectrum',
-                        'comment': 
-                        ('Calculations described in full in Woodworth-'+ 
-                         'Jefcoats et al 2013 (DOI: 10.1111/gcb.12076)'),
-                        'units': 'TBA'})
+    slope = slope.assign_attrs({
+        'short_name': 'slope',
+        'long_name': 'Slope of primary producer spectrum',
+        'comment': ('Calculations described in full in Woodworth-'+ 
+                    'Jefcoats et al 2013 (DOI: 10.1111/gcb.12076)'),
+        'units': 'TBA'})
 
     #a is really log10(a), same a when small, midsmall are used
-    intercept = (large-(slope*midlarge)).round(decimals = 6)
+    intercept = (large-(slope*midlarge)).round(decimals = 10)
     intercept.name = 'intercept'
-    intercept = intercept.assign_attrs({'short_name': 'intercept',
-                        'long_name': 'Intercept of primary producer spectrum',
-                        'comment': 
-                        ('Calculations described in full in Woodworth-'+ 
-                         'Jefcoats et al 2013 (DOI: 10.1111/gcb.12076)'),
-                        'units': 'TBA'})
+    intercept = intercept.assign_attrs({
+        'short_name': 'intercept',
+        'long_name': 'Intercept of primary producer spectrum',
+        'comment': ('Calculations described in full in Woodworth-'+ 
+                    'Jefcoats et al 2013 (DOI: 10.1111/gcb.12076)'),
+        'units': 'TBA'})
 
     # a could be used directly to replace 10^pp in sizemodel()
     if output == 'slope':
@@ -516,7 +527,7 @@ def gridded_spinup(file_path, start_spin, end_spin, spinup_period,
         spinup_da = [da] * int(len(spinup_period)/len(da.time))
 
     #Create spinup data array
-    spinup_da = xr.concat(spinup_da, dim = 'time').round(decimals = 6)
+    spinup_da = xr.concat(spinup_da, dim = 'time').round(decimals = 10)
     spinup_da['time'] = spinup_period
     
     #Updating chunks
@@ -528,7 +539,9 @@ def gridded_spinup(file_path, start_spin, end_spin, spinup_period,
         f_out = kwargs.get('file_out')
         #Ensure folder in file path exists
         os.makedirs(os.path.dirname(f_out), exist_ok = True)
-        spinup_da.to_zarr(f_out, consolidated = True, mode = 'w')
+        spinup_da.to_zarr(f_out, consolidated = True, mode = 'w', 
+                          encoding = {var: {'dtype': 'int64', '_FillValue': -99999, 
+                                            'scale_factor': 1e-10}})
     
     return spinup_da
 
@@ -1332,7 +1345,17 @@ def detritus_pool(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                       dbpm_init_inputs['predators']*
                       dbpm_fixed_inputs['size_bin_vals']*
                       gridded_params['log_size_increase'])+
+                     (dbpm_fixed_inputs['senes_mort_pred']*
+                      dbpm_dynamic_inputs['pel_tempeffect']*
+                      dbpm_init_inputs['predators']*
+                      dbpm_fixed_inputs['size_bin_vals']*
+                      gridded_params['log_size_increase'])+
                      (dbpm_fixed_inputs['other_mort_det']*
+                      dbpm_dynamic_inputs['ben_tempeffect']*
+                      dbpm_fixed_inputs['size_bin_vals']*
+                      gridded_params['log_size_increase']*
+                      dbpm_init_inputs['detritivores'])+
+                    (dbpm_fixed_inputs['senes_mort_det']*
                       dbpm_dynamic_inputs['ben_tempeffect']*
                       dbpm_fixed_inputs['size_bin_vals']*
                       gridded_params['log_size_increase']*
