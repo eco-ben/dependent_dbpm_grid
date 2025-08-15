@@ -624,27 +624,26 @@ sizemodel <- function(params, ERSEM_det_input = F, temp_effect = T,
         #considering pelagic faeces as input as well as dead bodies from both 
         #pelagic and benthic communities and phytodetritus (dying sinking
         #phytoplankton)
+        # Temperature effects removed from senescence mortality on 2025-08-14
+        # top match total mortality calculation above
+        # Senescense mortality removed altoghether from detritus calculations
+        # after discussion with Julia on 2025-08-15
         if(detritus_coupling){
           # pelagic spectrum inputs (sinking dead bodies and faeces) - export 
           # ratio used for "sinking rate" + benthic spectrum inputs (dead stuff
           # already on/in seafloor)
+          # removing temperature effects from senescence mortality to match
+          # total mortality calculations above. Changed on 2025-08-14
           input_w <- (sinking_rate[i]* 
                         (sum(defbypred[ind_min_pred_size:numb_size_bins]*
                                log_size_increase)+
                            sum(pel_tempeffect[i]*other_mort_pred*predators[, i]*
-                                 size_bins_vals*log_size_increase) + 
-                           sum(pel_tempeffect[i]*senes_mort_pred*predators[, i]*
                                  size_bins_vals*log_size_increase)) +
                         (sum(ben_tempeffect[i]*other_mort_det*detritivores[, i]*
-                               size_bins_vals*log_size_increase) + 
-                           sum(ben_tempeffect[i]*senes_mort_det*
-                                 detritivores[, i]*size_bins_vals*
-                                 log_size_increase)))
+                               size_bins_vals*log_size_increase)))
         }else{
           input_w <- sum(ben_tempeffect[i]*other_mort_det*detritivores[, i]*
-                           size_bins_vals*log_size_increase)+ 
-            sum(ben_tempeffect[i]*senes_mort_det*detritivores[, i]*
-                  size_bins_vals*log_size_increase)
+                           size_bins_vals*log_size_increase)
         }
         
         # get burial rate from Dunne et al. 2007 equation 3
