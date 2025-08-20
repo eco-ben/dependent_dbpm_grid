@@ -86,7 +86,7 @@ for(f in fao){
   
   # Calibration plots with parameters that had highest correlation values
   params_calibration |> 
-    slice(1) |>
+    filter(cor == max(cor)) |> 
     corr_calib_plots(dbpm_inputs, file.path(results_folder, "high_corr"))
 }
 
@@ -197,62 +197,55 @@ fishing_params <- fao |>
   filter(cor >= 0.5) |> 
   filter(rmse == min(rmse))
 
-# Calculate initial conditions for each resolution
-# Resolution
-resolutions <- c("1deg", "025deg")
-
 for(f in fao){
-  for(res in resolutions){
-    results_folder <- file.path(base_folder, f, "init_fish_vals", res,
-                                paste0("best_fish_vals", smoothed))
-    # If the folder does not exist, create a new one
-    if(!dir.exists(results_folder)){
-      dir.create(results_folder, recursive = T)
-    }
-    
-    dbpm_inputs <- file.path(base_folder, f, 
-                             paste0("monthly_weighted", smoothed), res,
-                             paste0("dbpm_clim-fish-inputs", fn_search, "_", f, 
-                                    "_1841-2010.parquet")) |> 
-      read_parquet()
-    
-    fish_param <- fishing_params |> 
-      filter(region == str_replace(str_to_upper(f), "-", " "))
-    
-    params <- sizeparam(dbpm_inputs, fish_param, xmin_consumer_u = -3, 
-                        xmin_consumer_v = -3)
-    
-    # Saving non-spatial parameters
-    params |> 
-      #Ensuring up to 10 decimal places are saved in file
-      write_json(file.path(results_folder, 
-                           paste0("dbpm_size_params_", f, ".json")), 
-                 digits = 10)
-    
-    # Run non-spatial DBPM.  This step is necessary to get the initial 
-    # conditions to be used in the gridded DBPM
-    init_results <- run_model(fish_param, dbpm_inputs, withinput = F, 
-                              xmin_consumer_u = -3, xmin_consumer_v = -3)
-    
-    # Prepare fishing parameters for gridded DBPM 
-    pred_initial <- rowMeans(init_results$predators)
-    detritivore_initial <- rowMeans(init_results$detritivores)
-    detritus_initial <- mean(init_results$detritus)
-    
-    gridded_params <- sizeparam(dbpm_inputs, fish_param, xmin_consumer_u = -3, 
-                                xmin_consumer_v = -3, use_init = T, 
-                                pred_initial = pred_initial, 
-                                detritivore_initial = detritivore_initial, 
-                                detritus_initial = detritus_initial,
-                                gridded = T)
-    
-    #Save for use in gridded DBPM (step 05)
-    gridded_params |> 
-      write_json(file.path(results_folder, 
-                           paste0("dbpm_gridded_size_params_", f, ".json")),
-                 digits = 10)
+  results_folder <- file.path(base_folder, f, "init_fish_vals", 
+                              paste0("best_fish_vals", smoothed))
+  # If the folder does not exist, create a new one
+  if(!dir.exists(results_folder)){
+    dir.create(results_folder, recursive = T)
   }
   
+  dbpm_inputs <- file.path(base_folder, f, paste0("monthly_weighted", smoothed),
+                           "025deg", paste0("dbpm_clim-fish-inputs", fn_search,
+                                            "_", f, "_1841-2010.parquet")) |> 
+    read_parquet()
+  
+  fish_param <- fishing_params |> 
+    filter(region == str_replace(str_to_upper(f), "-", " "))
+  
+  params <- sizeparam(dbpm_inputs, fish_param, xmin_consumer_u = -3, 
+                      xmin_consumer_v = -3)
+  
+  # Saving non-spatial parameters
+  params |> 
+    #Ensuring up to 10 decimal places are saved in file
+    write_json(file.path(results_folder, 
+                         paste0("dbpm_size_params_", f, ".json")), 
+               digits = 10)
+  
+  # Run non-spatial DBPM.  This step is necessary to get the initial 
+  # conditions to be used in the gridded DBPM
+  init_results <- run_model(fish_param, dbpm_inputs, withinput = F, 
+                            xmin_consumer_u = -3, xmin_consumer_v = -3)
+  
+  # Prepare fishing parameters for gridded DBPM 
+  pred_initial <- rowMeans(init_results$predators)
+  detritivore_initial <- rowMeans(init_results$detritivores)
+  detritus_initial <- mean(init_results$detritus)
+  
+  gridded_params <- sizeparam(dbpm_inputs, fish_param, xmin_consumer_u = -3, 
+                              xmin_consumer_v = -3, use_init = T, 
+                              pred_initial = pred_initial, 
+                              detritivore_initial = detritivore_initial, 
+                              detritus_initial = detritus_initial,
+                              gridded = T)
+  
+  #Save for use in gridded DBPM (step 05)
+  gridded_params |> 
+    write_json(file.path(results_folder, 
+                         paste0("dbpm_gridded_size_params_", f, ".json")),
+               digits = 10)
+
   # Defining folder to save non-spatial results
   dbpm_out_folder <- file.path(out_folder, f, 
                                paste0("fishing_runs", smoothed),
