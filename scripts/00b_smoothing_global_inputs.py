@@ -4,16 +4,14 @@
 import os
 from glob import glob
 import useful_functions as uf
+import shutil
 import dask
 from distributed import Client
 from multiprocessing import Process, freeze_support
-import shutil
 
 ########################### THIS STEP IS OPTIONAL ###########################
 # Only run this script if inputs need to be smoothed out before running 
 # DBPM (gridded or non-spatial)
-
-#Start cluster
 if __name__ == '__main__':
     freeze_support()
 
@@ -22,14 +20,14 @@ if __name__ == '__main__':
 
     #Base folder where GFDL outputs are stored 
     base_dir = '/g/data/vf71/fishmip_inputs/ISIMIP3a/global_gridded_zarr'
-
+    
     #Define experiments and resolution
     exp_name = ['obsclim', 'ctrlclim']
     resolutions = ['1deg', '025deg']
-
+    
     #Define variables of interest
     dynamic_vars = ['er', 'intercept', 'slope', 'tob', 'tos']
-
+    
     # Choose whether smoothing of inputs will be performed by LOESS (smoothed) or
     # deseasoning data (deseasoned)
     smoothing = 'deseasoned'
@@ -37,7 +35,7 @@ if __name__ == '__main__':
     smooth_folder = base_dir.replace('_gridded_', f'_gridded-{smoothing}_')
     # Ensure output folder exists
     os.makedirs(smooth_folder, exist_ok = True)
-
+    
     for res in resolutions:
         #Input folder
         f_in = os.path.join(base_dir, res)
@@ -59,7 +57,7 @@ if __name__ == '__main__':
                 shutil.copytree(depth_file, depth_out)
             except:
                 pass
-
+    
             #Find files to be smoothed
             for dv in dynamic_vars:
                 [file_in] = glob(os.path.join(f_in, f'*{exp}_{dv}_*'))
