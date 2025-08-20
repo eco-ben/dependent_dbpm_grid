@@ -50,11 +50,12 @@ for(f in fao){
       map(\(x) read_parquet(x)) |> 
       bind_rows() |> 
       arrange(time) |> 
-      clean_names()
+      clean_names() |> 
+      rename(depth = depth_m, area_m2 = tot_area_m2)
     
     # Getting the mean depth and area of the region of interest
     depth_area <- clim_forcing_file |> 
-      select(depth_m, tot_area_m2) |> 
+      select(depth, area_m2) |> 
       distinct()
   
     ## Loading effort data ----------------------------------------------------
@@ -71,8 +72,8 @@ for(f in fao){
       ungroup() |>
       rename(year = Year, region = fao_area) |> 
       # Adding depth and area information for the area of interest
-      mutate(depth = depth_area$depth_m, 
-             area_m2 = depth_area$tot_area_m2,
+      mutate(depth = depth_area$depth, 
+             area_m2 = depth_area$area_m2,
              total_nom_active_area_m2 = total_nom_active/area_m2,
              nom_active_relative = total_nom_active/max(total_nom_active),
              nom_active_area_m2_relative = total_nom_active_area_m2/
@@ -93,8 +94,8 @@ for(f in fao){
       ungroup() |> 
       rename(year = Year, region = fao_area) |> 
       # Adding depth and area information for the area of interest
-      mutate(depth = depth_area$depth_m, 
-             area_m2 = depth_area$tot_area_m2,
+      mutate(depth = depth_area$depth, 
+             area_m2 = depth_area$area_m2,
              catch_tonnes_area_m2 = catch_tonnes/area_m2)
   
     #From Pauly et al 2020
@@ -128,7 +129,7 @@ for(f in fao){
                                           na.rm = T)) |> 
       full_join(catch_pauly, by = "year") |> 
       arrange(year) |> 
-      mutate(area_m2 = depth_area$tot_area_m2) |>
+      mutate(area_m2 = depth_area$area_m2) |>
       mutate(catch_pauly = catch_tonnes_pauly/area_m2, 
              .after = catch_tonnes_pauly) |> 
       mutate(catch_ccamlr = catch_tonnes_ccamlr/area_m2, 
@@ -152,8 +153,8 @@ for(f in fao){
       arrange(year) |> 
       relocate(catch_tonnes, .after = area_m2) |> 
       mutate(region = case_when(is.na(region) ~ fao_id, T ~ region), 
-             depth = case_when(is.na(depth) ~ depth_area$depth_m, T ~ depth),
-             area_m2 = case_when(is.na(area_m2) ~ depth_area$tot_area_m2, 
+             depth = case_when(is.na(depth) ~ depth_area$depth, T ~ depth),
+             area_m2 = case_when(is.na(area_m2) ~ depth_area$area_m2, 
                                  T ~ area_m2))
     
     rm(catch_pauly, catch_watson, catch_ccamlr)
@@ -174,7 +175,7 @@ for(f in fao){
     
     #Joining with climate inputs
     forcing_file <- clim_forcing_file |> 
-      full_join(DBPM_effort_catch_input, by = c("region", "year")) 
+      full_join(DBPM_effort_catch_input) 
   
   
     ## Plotting fish and catch data -------------------------------------------
