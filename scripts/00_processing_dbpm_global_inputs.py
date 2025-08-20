@@ -69,30 +69,20 @@ if __name__ == '__main__':
             #Save outputs
             sphy.to_zarr(
                 os.path.join(gfdl_out, base_fn.replace('_var_', '_sphy_')), 
-                consolidated = True, mode = 'w', encoding = 
-                {'sphy': {'dtype': 'int64', 'scale_factor': 1e-10, 
-                       '_FillValue': -99999}})
+                consolidated = True, mode = 'w')
             lphy.to_zarr(
                 os.path.join(gfdl_out, base_fn.replace('_var_', '_lphy_')),
-                consolidated = True, mode = 'w', encoding = 
-                {'lphy': {'dtype': 'int64', 'scale_factor': 1e-10, 
-                       '_FillValue': -99999}})
+                consolidated = True, mode = 'w')
             er.to_zarr(
                 os.path.join(gfdl_out, base_fn.replace('_var_', '_er_')),
-                consolidated = True, mode = 'w', encoding = 
-                {'export_ratio': {'dtype': 'int64', 'scale_factor': 1e-10, 
-                       '_FillValue': -99999}})
+                consolidated = True, mode = 'w')
             
             #Calculate intercept and slope
             intercept, slope = uf.GetPPIntSlope(gfdl_out, exp)
             #Save outputs
             intercept.to_zarr(
                 os.path.join(gfdl_out, base_fn.replace('_var_', '_intercept_')), 
-                consolidated = True, mode = 'w', encoding = 
-                {'intercept': {'dtype': 'int64', 'scale_factor': 1e-10, 
-                       '_FillValue': -99999}})
+                consolidated = True, mode = 'w')
             slope.to_zarr(
                 os.path.join(gfdl_out, base_fn.replace('_var_', '_slope_')), 
-                consolidated = True, mode = 'w', encoding = 
-                {'slope': {'dtype': 'int64', 'scale_factor': 1e-10, 
-                       '_FillValue': -99999}})
+                consolidated = True, mode = 'w')
