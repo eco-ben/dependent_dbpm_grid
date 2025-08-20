@@ -254,15 +254,13 @@ for(f in fao){
     dir.create(dbpm_out_folder, recursive = T)
   }
 
-  # Running non-spatial DBPM and saving results - This step is needed only 
-  # once
+  # Running non-spatial DBPM and saving results
   fout <- file.path(dbpm_out_folder, 
                     paste0("dbpm_nonspatial_", f, "_1841-2010.parquet"))
-  if(!file.exists(fout)){
-    run_model(fish_param, dbpm_inputs, xmin_consumer_u = -3, 
-              xmin_consumer_v = -3) |> 
-      write_parquet(fout)
-  }
+
+  run_model(fish_param, dbpm_inputs, xmin_consumer_u = -3, 
+            xmin_consumer_v = -3) |> 
+    write_parquet(fout)
 }
 
     
