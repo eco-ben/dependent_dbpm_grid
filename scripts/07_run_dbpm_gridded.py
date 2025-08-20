@@ -30,7 +30,7 @@ if __name__ == '__main__':
     ## If starting DBPM run from a specific time step ----
     # Character: Year and month from when DBPM initialisation values should be loaded
     # If starting model for the first time, it should be set to None
-    init_time = '1963-06'
+    init_time = None
 
     # Set variables to find correct input files based on 'smoothing' variable - Also
     # used to name processed inputs
@@ -48,7 +48,13 @@ if __name__ == '__main__':
     gridded_folder = os.path.join(base_folder, reg, f'gridded{smoothing}', res)
 
     #Folder where outputs will be stored 
-    out_folder = os.path.join(base_out_folder, reg, f'fishing_runs{smoothing}', res)
+    out_folder = '/g/data/vf71/la6889/lme_scale_calibration_ISMIP3a/scripts/test'
+    # out_folder = os.path.join(base_out_folder, reg, f'fishing_runs{smoothing}', res)
+    # out_folder = os.path.join(base_out_folder, reg, f'fishing_runs{smoothing}_round', res)
+    # out_folder = os.path.join(base_out_folder, reg, f'fishing_runs{smoothing}_round_nosm', res)
+    # out_folder = os.path.join(base_out_folder, reg, f'fishing_runs{smoothing}_round_nodet', res)
+    # out_folder = os.path.join(base_out_folder, reg, f'fishing_runs{smoothing}_round_no_tempeff', res)
+    # out_folder = os.path.join(base_out_folder, reg, f'fishing_runs{smoothing}_no_sm', res)
     #If output folder does not exist, it will create it
     os.makedirs(out_folder, exist_ok = True) 
     
@@ -94,7 +100,7 @@ if __name__ == '__main__':
     
     #Gridded parameters
     gridded_params = json.load(open(
-        os.path.join(base_folder, reg, 'init_fish_vals', res, 
+        os.path.join(base_folder, reg, 'init_fish_vals', 
                      f'best_fish_vals{smoothing}', 
                      f'dbpm_gridded_size_params_{reg}_python.json')))
 
@@ -110,7 +116,6 @@ if __name__ == '__main__':
                                                   ds_fixed['depth'], 
                                                   ds_fixed['log10_size_bins'], 
                                                   gridded_params)
-                # Saving predation mortality
                 #Getting year and month 
                 dt_eff = pd.to_datetime(eff_short.time.values[0]).strftime('%Y-%m')
                 # Creating file name
@@ -127,7 +132,13 @@ if __name__ == '__main__':
                 ds_dynamic['effort'] = xr.where(ds_dynamic.time == ds_dynamic.time[t], 
                                                 eff_short.values, ds_dynamic['effort'])
         
-        ds_init = uf.gridded_sizemodel(gridded_params, ds_fixed, ds_init, 
-                                       ds_dyn, region = reg, model_res = res, 
-                                       out_folder = out_folder)
+        # ds_init = uf.gridded_sizemodel(gridded_params, ds_fixed, ds_init, 
+        #                                ds_dyn, region = reg, model_res = res, 
+        #                                out_folder = out_folder)
+        ds_init = uf.gridded_sizemodel_rk4(gridded_params, ds_fixed, ds_init, 
+                                           ds_dyn, region = reg, model_res = res, 
+                                           out_folder = out_folder, rk4_substeps = 8)
+        # ds_init = uf.gridded_sizemodel_solve_ivp(gridded_params, ds_fixed, ds_init, 
+        #                                          ds_dyn, region = reg, model_res = res, 
+        #                                          out_folder = out_folder)
 
