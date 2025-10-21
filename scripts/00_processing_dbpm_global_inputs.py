@@ -4,6 +4,7 @@
 import os
 from glob import glob
 import useful_functions as uf
+import xarray as xr
 import dask
 from distributed import Client
 from multiprocessing import Process, freeze_support
@@ -32,7 +33,7 @@ if __name__ == '__main__':
     resolutions = ['1deg', '025deg']
 
     #Define variables of interest
-    dbpm_var = ['deptho', 'expc-bot', 'phyc-vint', 'phypico-vint', 'tob', 'tos']
+    dbpm_var = ['siconc', 'deptho', 'expc-bot', 'phyc-vint', 'phypico-vint', 'tob', 'tos']
     
     #Loop through experiments and resolutions
     for res in resolutions:
@@ -86,3 +87,31 @@ if __name__ == '__main__':
             slope.to_zarr(
                 os.path.join(gfdl_out, base_fn.replace('_var_', '_slope_')), 
                 consolidated = True, mode = 'w')
+
+            #Create sea ice masks 
+            #Any grid cells with sea ice concentration of 15% or above will not be
+            #available for fishing
+            #Identify sea ice files
+            si_files = glob(os.path.join(gfdl_out, '*siconc*'))
+
+            #Create masks for all sea ice files
+            for f in si_files:
+                #Load files
+                da = xr.open_zarr(f)['siconc']
+                #Identify grid cells with at least 15% SIC
+                da_mask = xr.where(da >= 15, True, False)
+                #Rechunk data
+                da_mask = da_mask.chunk({'time': '500MB'})
+                #Update data array variable name
+                da_mask.name = 'simask'
+                #Split into northern and southern hemispheres
+                da_mask_north = xr.where(da_mask.lat > 0, da_mask, False)
+                da_mask_south = xr.where(da_mask.lat <= 0, da_mask, False)
+                #Create file path to save outputs
+                f_out = f.replace('siconc', 'simask')
+                #Save results
+                da_mask.to_zarr(f_out, consolidated = True, mode = 'w')
+                da_mask_north.to_zarr(f_out.replace('_global_', '_global-north_'), 
+                                      consolidated = True, mode = 'w')
+                da_mask_south.to_zarr(f_out.replace('_global_', '_global-south_'), 
+                                      consolidated = True, mode = 'w')
