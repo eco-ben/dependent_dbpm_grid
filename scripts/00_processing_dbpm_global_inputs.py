@@ -106,7 +106,9 @@ if __name__ == '__main__':
                 da_mask.name = 'simask'
                 #Split into northern and southern hemispheres
                 da_mask_north = xr.where(da_mask.lat > 0, da_mask, False)
+                da_mask_north.name = 'simask'
                 da_mask_south = xr.where(da_mask.lat <= 0, da_mask, False)
+                da_mask_south.name = 'simask'
                 #Create file path to save outputs
                 f_out = f.replace('siconc', 'simask')
                 #Save results
