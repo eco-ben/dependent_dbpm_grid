@@ -23,7 +23,7 @@ if __name__ == '__main__':
     base_dir = '/g/data/vf71/fishmip_inputs/ISIMIP3a/'
     
     # Define variables for which data will be extracted
-    vars_int = ['er', 'intercept', 'slope', 'tob', 'tos', 'deptho', 'areacello']
+    vars_int = ['simask', 'er', 'intercept', 'slope', 'tob', 'tos', 'deptho', 'areacello']
     
     # Define resolutions
     resolutions = ['1deg', '025deg']
@@ -52,7 +52,10 @@ if __name__ == '__main__':
         else:
             file_list = glob(
                 os.path.join(base_dir, f'global_gridded-{smoothing}_zarr', res, '*'))
+            si_list = glob(os.path.join(base_dir, 'global_gridded_zarr', res, '*_simask_*'))
+            file_list = file_list+si_list
             out_name = f'gridded-{smoothing}'
+            
 
         #List all files to be extracted
         for fao in fao_code:
