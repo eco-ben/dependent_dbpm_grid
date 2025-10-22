@@ -1,7 +1,9 @@
+
 #!/usr/bin/env python3
 
 # Loading libraries
 import os
+import numpy as np
 from glob import glob
 import useful_functions as uf
 import xarray as xr
@@ -52,6 +54,8 @@ if __name__ == '__main__':
         f_out = os.path.basename(area_file).replace('.nc', '.zarr')
         f_out = os.path.join(gfdl_out, f_out)
         uf.netcdf_to_zarr(area_file, f_out)
+        #Load file area to use as land mask for sea ice processing step
+        area = xr.open_zarr(f_out)['cellareao']
         
         #Process all other variables
         for exp in exp_name:
@@ -97,23 +101,28 @@ if __name__ == '__main__':
             #Create masks for all sea ice files
             for f in si_files:
                 #Load files
-                da = xr.open_zarr(f)['siconc']
+                da = xr.open_zarr(f)['siconc'].where(np.isfinite(area))
                 #Identify grid cells with at least 15% SIC
                 da_mask = xr.where(da >= 15, True, False)
+                #Split into northern and southern hemispheres before calculating cumulative sum
+                
+                #Sea ice kept from 42N towards the north pole as the Sea of Okhotsk (45N) is the
+                #lowest latitude area where sea ice forms each winter according to NASA's 
+                #Earth Observatory
+                da_mask_north = (xr.where(da_mask.lat > 42, da_mask, False).
+                    isel(lat = slice(None, None, -1)).cumsum('lat')))
+                #Sea ice kept from 52S towards the south pole as 55S is the lowest latitude area
+                # where sea ice forms each winter according to NASA's Earth Observatory
+                da_mask_south = xr.where(da_mask.lat <= -52, da_mask, False).cumsum('lat')
+                #Create a single global mask
+                da_mask = (da_mask_north+da_mask_south)
+                #Remove any grid cells that are on land or have sea ice within their boundaries
+                da_mask = xr.where(da_mask > 0, np.nan, 1).where(np.isfinite(area))
                 #Rechunk data
                 da_mask = da_mask.chunk({'time': '500MB'})
                 #Update data array variable name
                 da_mask.name = 'simask'
-                #Split into northern and southern hemispheres
-                da_mask_north = xr.where(da_mask.lat > 0, da_mask, False)
-                da_mask_north.name = 'simask'
-                da_mask_south = xr.where(da_mask.lat <= 0, da_mask, False)
-                da_mask_south.name = 'simask'
                 #Create file path to save outputs
                 f_out = f.replace('siconc', 'simask')
                 #Save results
                 da_mask.to_zarr(f_out, consolidated = True, mode = 'w')
-                da_mask_north.to_zarr(f_out.replace('_global_', '_global-north_'), 
-                                      consolidated = True, mode = 'w')
-                da_mask_south.to_zarr(f_out.replace('_global_', '_global-south_'), 
-                                      consolidated = True, mode = 'w')
