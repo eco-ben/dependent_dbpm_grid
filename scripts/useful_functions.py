@@ -476,12 +476,12 @@ def GetPPIntSlope(gfdl_folder, gfdl_exp, mmin = 10**(-14.25), mmid = 10**(-10.18
 
 
 # Calculate spinup from gridded data
-def gridded_spinup(file_path, start_spin, end_spin, spinup_period,
+def gridded_spinup(file_path_or_data_array, start_spin, end_spin, spinup_period,
                    mean_spinup = False, **kwargs):
     '''
     Inputs:
-    - file_path (character) File path pointing to zarr file from which spinup
-    will be calculated
+    - file_path_or_data_array (character or Data Array) Provide either file path 
+    where GFDL zarr file is located or Data Array
     - start_spin (character or numeric) Year or date spinup calculation starts
     - end_spin (character or numeric) Year or date spinup calculation ends
      - spinup_period (pandas Datetime array) New time labels for spinup period.
@@ -498,11 +498,18 @@ def gridded_spinup(file_path, start_spin, end_spin, spinup_period,
     '''
 
     #Loading data
-    da = xr.open_zarr(file_path)
-    #Getting name of variable contained in dataset
-    [var] = list(da.keys())
+    if isinstance(file_path_or_data_array, str):
+        da = xr.open_zarr(file_path_or_data_array)
+        #Getting name of variable contained in dataset
+        [var] = list(da.keys())
+        da = da[var]
+    elif isinstance(file_path_or_data_array, xr.DataArray):
+        da = file_path_or_data_array
+    else:
+        print('Please provide either a file path or data array to run function.')
+
     #Select period to be used for spinup
-    da = da[var].sel(time = slice(str(start_spin), str(end_spin)))
+    da = da.sel(time = slice(str(start_spin), str(end_spin)))
     #If spinup should be created based on mean values over spinup period
     if mean_spinup:
         da = da.mean('time')
