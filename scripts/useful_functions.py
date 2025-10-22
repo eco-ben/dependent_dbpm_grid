@@ -936,6 +936,7 @@ def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None, fishing = True
         ben_tempeffect = ben_tempeffect.sel(time = slice(subset_time, None))
         sinking_rate = sinking_rate.sel(time = slice(subset_time, None))
         effort = effort.sel(time = slice(subset_time, None))
+        simask = simask.sel(time = slice(subset_time, None))
 
     ds_dynamic = xr.Dataset(data_vars = {'ui0': ui0, 'slope': slope,
                                          'pel_tempeffect': pel_tempeffect,
