@@ -696,6 +696,9 @@ def gravitymodel(effort, prop_b, depth, n_iter, sea_ice_mask):
         eff = neweffort*mult
         i += i
 
+    #Ensuring NA values are transformed to zeroes
+    eff = xr.where(np.isfinite(eff), eff, 0)
+
     return eff
 
 
@@ -731,6 +734,7 @@ def effort_calculation(predators, detritivores, effort, depth, size_bin_vals,
     
         #Calculate new effort
         new_effort = gravitymodel(effort, prop_b, depth, 1, sea_ice_mask)
+        new_effort = xr.where(np.isfinite(depth), new_effort, np.nan)
     else:
         new_effort = effort
 
