@@ -11,11 +11,14 @@ library(tibble)
 base_folder <- "/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs"
 fao <- list.dirs(base_folder, recursive = F, full.names = F) |> 
   str_subset(pattern = "fao-")
+
+# Define search volume
+search_volume = 0.64
   
 # "smoothed" can be either NULL to use original inputs, 'smoothed' to use LOESS
 # smoothed inputs or 'deseasoned' to use deseasoned inputs
 # outputs to force DBPM
-smoothed <- "deseasoned"
+smoothed <- NULL
 if(!is.null(smoothed)){
   fn_search <- "-smoothed"
   smoothed <- paste0("-", smoothed)
@@ -38,7 +41,8 @@ for(f in fao){
                               paste0("best_fish_params", smoothed))
   #Number of iterations
   no_iter <- 100
-  params_calibration <- LHSsearch(num_iter = no_iter,
+  params_calibration <- LHSsearch(num_iter = no_iter, 
+                                  search_volume = search_volume,
                                   forcing_file = dbpm_inputs, 
                                   gridded_forcing = NULL, 
                                   best_val_folder = results_folder, 
