@@ -24,14 +24,13 @@ if __name__ == '__main__':
 
     ## Define if run should include fishing ----
     fishing = True
-
     # Choose whether smoothing of inputs will be performed by LOESS (smoothed) or
     # deseasoning data (deseasoned)
     smoothing = 'deseasoned'
     ## If starting DBPM run from a specific time step ----
     # Character: Year and month from when DBPM initialisation values should be loaded
     # If starting model for the first time, it should be set to None
-    init_time = '2008-10'
+    init_time = '1963-06'
 
     # Set variables to find correct input files based on 'smoothing' variable - Also
     # used to name processed inputs
@@ -49,10 +48,7 @@ if __name__ == '__main__':
     gridded_folder = os.path.join(base_folder, reg, f'gridded{smoothing}', res)
 
     #Folder where outputs will be stored 
-    if fishing:
-        out_folder = os.path.join(base_out_folder, reg, f'fishing_runs{smoothing}', res)
-    if not fishing:
-        out_folder = os.path.join(base_out_folder, reg, f'no-fishing_runs{smoothing}', res)
+    out_folder = os.path.join(base_out_folder, reg, f'fishing_runs{smoothing}', res)
 
     #If output folder does not exist, it will create it
     os.makedirs(out_folder, exist_ok = True) 
@@ -71,6 +67,8 @@ if __name__ == '__main__':
     ## Loading predator, detritivores and detritus initialisation data ----
     if init_time is None:
         ds_init = uf.loading_dbpm_biomass_inputs(gridded_folder)
+        # ds_init = uf.loading_dbpm_biomass_inputs(os.path.join(gridded_folder, 
+        #                                                      'weekly'))
     else:
         ds_init = uf.loading_dbpm_biomass_inputs(out_folder, init_time)
     
@@ -79,12 +77,15 @@ if __name__ == '__main__':
                                                 fishing = fishing)
   
     if init_time is not None and fishing:
+    # ds_dynamic = xr.open_zarr(
+    #     os.path.join(base_folder, reg, 'gridded-deseasoned-weekly', res,
+    #                  'weekly_dynamic_dbpm_inputs.zarr'))
         #Timestep from when to restart DBPM 
-        subset_time = (pd.Timestamp(init_time)+
-                       pd.DateOffset(months = 1)).strftime('%Y-%m')
+        subset_time = (pd.Timestamp(ds_dynamic.time.values[1]).
+                       strftime('%Y-%m-%d'))
         #Timestep from when to add init effort data
-        effort_time = (pd.Timestamp(init_time)+
-                       pd.DateOffset(months = 2)).strftime('%Y-%m')
+        effort_time = (pd.Timestamp(ds_dynamic.time.values[2]).
+                       strftime('%Y-%m-%d'))
         #Load effort for time step DBPM starts
         e_start = xr.open_dataarray(glob(os.path.join(
             out_folder, f'effort_*_{subset_time}.nc'))[0])
@@ -96,7 +97,9 @@ if __name__ == '__main__':
     
         #Creating a single dataset for all dynamic inputs
         ds_dynamic['effort'] = effort.load()
-
+        #Remove first timestep because it is not needed
+        ds_dynamic = ds_dynamic.sel(time = slice(subset_time, None))
+    
     #Gridded parameters
     gridded_params = json.load(open(
         os.path.join(base_folder, reg, 'init_fish_vals', res, 
@@ -114,8 +117,7 @@ if __name__ == '__main__':
                                                   ds_dynamic['effort'].isel(time = t+1), 
                                                   ds_fixed['depth'], 
                                                   ds_fixed['log10_size_bins'], 
-                                                  gridded_params,
-                                                  ds_dynamic['sea_ice_mask'].isel(time = t+1))
+                                                  gridded_params)
                 # Saving predation mortality
                 #Getting year and month 
                 dt_eff = pd.to_datetime(eff_short.time.values[0]).strftime('%Y-%m')
@@ -133,11 +135,8 @@ if __name__ == '__main__':
                 ds_dynamic['effort'] = xr.where(ds_dynamic.time == ds_dynamic.time[t], 
                                                 eff_short.values, ds_dynamic['effort'])
         
-        # Running gridded DBPM
-        # ds_init = uf.gridded_sizemodel(gridded_params, ds_fixed, ds_init, 
-        #                                ds_dyn, region = reg, model_res = res, 
-        #                                out_folder = out_folder)
-        ds_init = uf.gridded_sizemodel_rk4(gridded_params, ds_fixed, ds_init, 
-                                           ds_dyn, region = reg, model_res = res, 
-                                           out_folder = out_folder, force_finite = False,
-                                           rk4_substeps = 4)
+        ds_init = uf.gridded_sizemodel(gridded_params, ds_fixed, ds_init, 
+                                       ds_dyn, region = reg, model_res = res, 
+                                       out_folder = out_folder, weekly = True, 
+                                       force_finite = False)
+

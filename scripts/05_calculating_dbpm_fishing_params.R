@@ -11,7 +11,13 @@ library(tibble)
 base_folder <- "/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs"
 fao <- list.dirs(base_folder, recursive = F, full.names = F) |> 
   str_subset(pattern = "fao-")
-  
+
+# Define search volume
+search_volume <- 0.64
+
+# Fishing parameters already created?
+params_ready <- T
+
 # "smoothed" can be either NULL to use original inputs, 'smoothed' to use LOESS
 # smoothed inputs or 'deseasoned' to use deseasoned inputs
 # outputs to force DBPM
@@ -38,57 +44,79 @@ for(f in fao){
                               paste0("best_fish_params", smoothed))
   #Number of iterations
   no_iter <- 100
-  params_calibration <- LHSsearch(num_iter = no_iter,
-                                  forcing_file = dbpm_inputs, 
-                                  gridded_forcing = NULL, 
-                                  best_val_folder = results_folder, 
-                                  best_param = F, new_detritus_calc = F) |> 
-    rowid_to_column("id")
-  
+  if(!params_ready){
+    params_calibration <- LHSsearch(num_iter = no_iter,
+                                    search_volume = search_volume,
+                                    forcing_file = dbpm_inputs,
+                                    gridded_forcing = NULL,
+                                    best_val_folder = results_folder,
+                                    best_param = F) |>
+      rowid_to_column("id")
+  }else{
+    params_calibration <- read_parquet(
+      file.path(results_folder, 
+                paste0("best-fishing-parameters_", f, "_searchvol_", 
+                       search_volume, "_numb-iter_", no_iter, ".parquet"))) |>
+      rowid_to_column("id")
+  }
+
   ## Creating plots with fishing parameters calculated above --------------
   # Calculate errors and correlations with tuned fishing parameters and save 
   # plot
-  params_corr <- params_calibration |> 
-    split(params_calibration$id) |>
-    map_df(\(x) getError(x, dbpm_inputs, corr = T, new_detritus_calc = F)) 
-  
+  params_corr <- tryCatch(
+    {params_calibration |> 
+      split(params_calibration$id) |>
+      map_df(\(x) getError(x, dbpm_inputs, corr = T))},
+    error = function(e){
+      NULL},
+    warning = function(w){
+      NULL},
+    finally = {message("Correlation calculation for region ", f, " completed.")}
+  )
+    
   #Adding correlation to fishing parameter data frame
-  params_calibration <- params_calibration |> 
-    #Removing column to avoid duplication
-    select(!region) |> 
-    bind_cols(params_corr) |> 
-    select(!id) |> 
-    #Remove any rows where simulation returned NA values
-    filter(catchNA == 0) |> 
-    arrange(desc(cor), rmse) |> 
-    relocate(region, .before = fmort_u)
+  if(!is.null(params_corr)){
+    params_calibration <- params_calibration |> 
+      #Removing column to avoid duplication
+      select(!region) |> 
+      bind_cols(params_corr) |> 
+      select(!id) |> 
+      #Remove any rows where simulation returned NA values
+      filter(catchNA == 0) |> 
+      arrange(desc(cor), rmse) |> 
+      relocate(region, .before = fmort_u)
   
-  #Saving results
-  params_calibration |> 
-    write_parquet(file.path(
-      results_folder,
-      paste0("best-fishing-parameters_", f, 
-             "_searchvol_estimated_numb-iter_", no_iter,".parquet")))
-  
-  # Calibration plots to be done after all fishing parameters are calculated
-  #Filter best fishing parameters
-  good <- params_calibration |> 
-    filter(cor >= 0.5) |> 
-    filter(rmse == min(rmse))
-  #If nothing is returned, then use parameters for lowest rmse
-  if(nrow(good) == 0){
-    good <- params_calibration |> 
-      filter(rmse == min(rmse))
+    #Saving results
+    if(nrow(params_calibration) > 0){
+      params_calibration |> 
+        write_parquet(
+          file.path(results_folder, 
+                    paste0("best-fishing-parameters_", f, "_searchvol_", 
+                           search_volume, "_numb-iter_", no_iter, ".parquet")))
+      # Calibration plots to be done after all fishing parameters are calculated
+      #Filter best fishing parameters
+      good <- params_calibration |> 
+        filter(cor >= 0.5) |> 
+        filter(rmse == min(rmse))
+      #If nothing is returned, then use parameters for lowest rmse
+      if(nrow(good) == 0){
+        good <- params_calibration |> 
+          filter(rmse == min(rmse))
+      }
+      #Create plot with best performing parameters
+      good |> 
+        corr_calib_plots(dbpm_inputs, results_folder)
+      
+      # Calibration plots with parameters that had highest correlation values
+      params_calibration |> 
+        filter(cor == max(cor)) |> 
+        corr_calib_plots(dbpm_inputs, file.path(results_folder, "high_corr"))
+    }else{
+        print(
+          paste0("No fishing parameters could be successfully calculated for ", 
+                 f))
+      }
   }
-  #Create plot with best performing parameters
-  good |> 
-    corr_calib_plots(dbpm_inputs, results_folder, new_detritus_calc = F)
-  
-  # Calibration plots with parameters that had highest correlation values
-  params_calibration |> 
-    slice(1) |>
-    corr_calib_plots(dbpm_inputs, file.path(results_folder, "high_corr"),
-                     new_detritus_calc = F)
 }
 
 
@@ -103,6 +131,7 @@ fish_param <- fao |>
                          paste0("best_fish_params", smoothed))) |> 
   list.files(pattern = "best-fishing-parameters", recursive = T,
                           full.names = T) |> 
+  str_subset(paste0("searchvol_", search_volume)) |> 
   map(~read_parquet(.)) |> 
   bind_rows()
 
@@ -133,17 +162,18 @@ for(f in bad_params){
   results_folder <- file.path(base_folder, f, "fishing_params",
                               paste0("best_fish_params", smoothed))
   
-  params_calibration_optim <- LHSsearch(num_iter = no_iter, seed = 42,
+  params_calibration_optim <- LHSsearch(num_iter = no_iter, 
+                                        search_volume = search_volume,
+                                        seed = 42,
                                         forcing_file = dbpm_inputs, 
                                         gridded_forcing = NULL, 
                                         best_val_folder = results_folder, 
-                                        best_param = F, 
-                                        new_detritus_calc = F) |> 
+                                        best_param = F) |> 
     rowid_to_column("id")
   
   params_corr <- params_calibration_optim |> 
     split(params_calibration_optim$id) |>
-    map_df(\(x) getError(x, dbpm_inputs, corr = T, new_detritus_calc = F))
+    map_df(\(x) getError(x, dbpm_inputs, corr = T))
   
   #Adding correlation to fishing parameter data frame
   params_calibration_optim <- params_calibration_optim |> 
@@ -158,8 +188,8 @@ for(f in bad_params){
   params_calibration_optim |> 
     write_parquet(file.path(
       results_folder,
-      paste0("best-fishing-parameters_", f, 
-             "_searchvol_estimated_numb-iter_", no_iter, ".parquet")))
+      paste0("best-fishing-parameters_", f, "_searchvol_", search_volume, 
+             "_numb-iter_", no_iter, ".parquet")))
   
   #Identifying best performing parameters
   good <- params_calibration_optim |> 
@@ -172,13 +202,12 @@ for(f in bad_params){
   }
   
   #Create calibration plot
-  corr_calib_plots(good, dbpm_inputs, results_folder, new_detritus_calc = F)
-  
+  corr_calib_plots(good, dbpm_inputs, results_folder)
+
   #Create plot with parameters that resulted in highest correlation
   params_calibration_optim |>
     filter(cor == max(cor)) |> 
-    corr_calib_plots(dbpm_inputs, file.path(results_folder, "high_corr"),
-                     new_detritus_calc = F)
+    corr_calib_plots(dbpm_inputs, file.path(results_folder, "high_corr"))
 }
 
 
@@ -200,63 +229,56 @@ fishing_params <- fao |>
   filter(cor >= 0.5) |> 
   filter(rmse == min(rmse))
 
-# Calculate initial conditions for each resolution
-# Resolution
-resolutions <- c("1deg", "025deg")
-
+# Calculate initial conditions 
 for(f in fao){
-  for(res in resolutions){
-    results_folder <- file.path(base_folder, f, "init_fish_vals", res,
-                                paste0("best_fish_vals", smoothed))
-    # If the folder does not exist, create a new one
-    if(!dir.exists(results_folder)){
-      dir.create(results_folder, recursive = T)
-    }
-    
-    dbpm_inputs <- file.path(base_folder, f, 
-                             paste0("monthly_weighted", smoothed), res,
-                             paste0("dbpm_clim-fish-inputs", fn_search, "_", f, 
-                                    "_1841-2010.parquet")) |> 
-      read_parquet()
-    
-    fish_param <- fishing_params |> 
-      filter(region == str_replace(str_to_upper(f), "-", " "))
-    
-    params <- sizeparam(dbpm_inputs, fish_param, xmin_consumer_u = -3, 
-                        xmin_consumer_v = -3)
-    
-    # Saving non-spatial parameters
-    params |> 
-      #Ensuring up to 10 decimal places are saved in file
-      write_json(file.path(results_folder, 
-                           paste0("dbpm_size_params_", f, ".json")), 
-                 digits = 10)
-    
-    # Run non-spatial DBPM.  This step is necessary to get the initial 
-    # conditions to be used in the gridded DBPM
-    init_results <- run_model(fish_param, dbpm_inputs, withinput = F, 
-                              new_detritus_calc = F, xmin_consumer_u = -3,
-                              xmin_consumer_v = -3)
-    
-    # Prepare fishing parameters for gridded DBPM 
-    pred_initial <- rowMeans(init_results$predators)
-    detritivore_initial <- rowMeans(init_results$detritivores)
-    detritus_initial <- mean(init_results$detritus)
-    
-    gridded_params <- sizeparam(dbpm_inputs, fish_param, xmin_consumer_u = -3, 
-                                xmin_consumer_v = -3, use_init = T, 
-                                pred_initial = pred_initial, 
-                                detritivore_initial = detritivore_initial, 
-                                detritus_initial = detritus_initial,
-                                gridded = T)
-    
-    #Save for use in gridded DBPM (step 05)
-    gridded_params |> 
-      write_json(file.path(results_folder, 
-                           paste0("dbpm_gridded_size_params_", f, ".json")),
-                 digits = 10)
+  results_folder <- file.path(base_folder, f, "init_fish_vals", 
+                              paste0("best_fish_vals", smoothed))
+  # If the folder does not exist, create a new one
+  if(!dir.exists(results_folder)){
+    dir.create(results_folder, recursive = T)
   }
   
+  dbpm_inputs <- file.path(base_folder, f, paste0("monthly_weighted", smoothed),
+                           "025deg", paste0("dbpm_clim-fish-inputs", fn_search,
+                                            "_", f, "_1841-2010.parquet")) |> 
+    read_parquet()
+  
+  fish_param <- fishing_params |> 
+    filter(region == str_replace(str_to_upper(f), "-", " "))
+  
+  params <- sizeparam(dbpm_inputs, fish_param, xmin_consumer_u = -3, 
+                      xmin_consumer_v = -3)
+  
+  # Saving non-spatial parameters
+  params |> 
+    #Ensuring up to 10 decimal places are saved in file
+    write_json(file.path(results_folder, 
+                         paste0("dbpm_size_params_", f, ".json")), 
+               digits = 10)
+  
+  # Run non-spatial DBPM.  This step is necessary to get the initial 
+  # conditions to be used in the gridded DBPM
+  init_results <- run_model(fish_param, dbpm_inputs, withinput = F, 
+                            xmin_consumer_u = -3, xmin_consumer_v = -3)
+  
+  # Prepare fishing parameters for gridded DBPM 
+  pred_initial <- rowMeans(init_results$predators)
+  detritivore_initial <- rowMeans(init_results$detritivores)
+  detritus_initial <- mean(init_results$detritus)
+  
+  gridded_params <- sizeparam(dbpm_inputs, fish_param, xmin_consumer_u = -3, 
+                              xmin_consumer_v = -3, use_init = T, 
+                              pred_initial = pred_initial, 
+                              detritivore_initial = detritivore_initial, 
+                              detritus_initial = detritus_initial,
+                              gridded = T)
+  
+  #Save for use in gridded DBPM (step 05)
+  gridded_params |> 
+    write_json(file.path(results_folder, 
+                         paste0("dbpm_gridded_size_params_", f, ".json")),
+               digits = 10)
+
   # Defining folder to save non-spatial results
   dbpm_out_folder <- file.path(out_folder, f, 
                                paste0("fishing_runs", smoothed),
@@ -265,15 +287,13 @@ for(f in fao){
     dir.create(dbpm_out_folder, recursive = T)
   }
 
-  # Running non-spatial DBPM and saving results - This step is needed only 
-  # once
+  # Running non-spatial DBPM and saving results
   fout <- file.path(dbpm_out_folder, 
                     paste0("dbpm_nonspatial_", f, "_1841-2010.parquet"))
-  if(!file.exists(fout)){
-    run_model(fish_param, dbpm_inputs, new_detritus_calc = F,
-              xmin_consumer_u = -3, xmin_consumer_v = -3) |> 
-      write_parquet(fout)
-  }
+
+  run_model(fish_param, dbpm_inputs, xmin_consumer_u = -3, 
+            xmin_consumer_v = -3) |> 
+    write_parquet(fout)
 }
 
     

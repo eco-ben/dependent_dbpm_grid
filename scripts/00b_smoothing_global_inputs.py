@@ -4,10 +4,11 @@
 import os
 from glob import glob
 import useful_functions as uf
+import shutil
 import dask
 from distributed import Client
 from multiprocessing import Process, freeze_support
-import shutil
+
 
 ########################### THIS STEP IS OPTIONAL ###########################
 # Only run this script if inputs need to be smoothed out before running 
@@ -22,14 +23,14 @@ if __name__ == '__main__':
 
     #Base folder where GFDL outputs are stored 
     base_dir = '/g/data/vf71/fishmip_inputs/ISIMIP3a/global_gridded_zarr'
-
+    
     #Define experiments and resolution
     exp_name = ['obsclim', 'ctrlclim']
     resolutions = ['1deg', '025deg']
-
+    
     #Define variables of interest
     dynamic_vars = ['er', 'intercept', 'slope', 'tob', 'tos']
-
+    
     # Choose whether smoothing of inputs will be performed by LOESS (smoothed) or
     # deseasoning data (deseasoned)
     smoothing = 'deseasoned'

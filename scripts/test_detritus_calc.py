@@ -19,19 +19,18 @@ if __name__ == '__main__':
     client = Client(threads_per_worker = 1, memory_limit = 0)
     
     ## Name of region and model resolution ----
-    reg = 'fao-31'
+    reg = 'fao-34'
     res = '1deg'
 
     ## Define if run should include fishing ----
     fishing = True
-
     # Choose whether smoothing of inputs will be performed by LOESS (smoothed) or
     # deseasoning data (deseasoned)
     smoothing = 'deseasoned'
     ## If starting DBPM run from a specific time step ----
     # Character: Year and month from when DBPM initialisation values should be loaded
     # If starting model for the first time, it should be set to None
-    init_time = '2008-10'
+    init_time = None
 
     # Set variables to find correct input files based on 'smoothing' variable - Also
     # used to name processed inputs
@@ -49,11 +48,10 @@ if __name__ == '__main__':
     gridded_folder = os.path.join(base_folder, reg, f'gridded{smoothing}', res)
 
     #Folder where outputs will be stored 
-    if fishing:
-        out_folder = os.path.join(base_out_folder, reg, f'fishing_runs{smoothing}', res)
-    if not fishing:
-        out_folder = os.path.join(base_out_folder, reg, f'no-fishing_runs{smoothing}', res)
-
+    out_folder = f'fao-34_problem_cell_fishing{smoothing}_full_dbpm_euler'
+    # out_folder = f'fao-34_problem_cell_no-fishing{smoothing}_full_dbpm_euler'
+    # out_folder = f'fao-34_good_cell_fishing{smoothing}_full_dbpm_euler'
+    # out_folder = f'fao-34_good_cell_no-fishing{smoothing}_full_dbpm_rk4'
     #If output folder does not exist, it will create it
     os.makedirs(out_folder, exist_ok = True) 
     
@@ -96,12 +94,16 @@ if __name__ == '__main__':
     
         #Creating a single dataset for all dynamic inputs
         ds_dynamic['effort'] = effort.load()
-
+    
     #Gridded parameters
     gridded_params = json.load(open(
         os.path.join(base_folder, reg, 'init_fish_vals', res, 
                      f'best_fish_vals{smoothing}', 
                      f'dbpm_gridded_size_params_{reg}_python.json')))
+
+    ds_init = ds_init.sel(lon = 11.5, lat = -4.5)
+    ds_fixed = ds_fixed.sel(lon = 11.5, lat = -4.5)
+    ds_dynamic = ds_dynamic.sel(time = slice(None, '1840'), lon = 11.5, lat = -4.5)
 
     ## Running spatial DBPM ----
     for t in range(0, len(ds_dynamic.time)):
@@ -114,9 +116,7 @@ if __name__ == '__main__':
                                                   ds_dynamic['effort'].isel(time = t+1), 
                                                   ds_fixed['depth'], 
                                                   ds_fixed['log10_size_bins'], 
-                                                  gridded_params,
-                                                  ds_dynamic['sea_ice_mask'].isel(time = t+1))
-                # Saving predation mortality
+                                                  gridded_params)
                 #Getting year and month 
                 dt_eff = pd.to_datetime(eff_short.time.values[0]).strftime('%Y-%m')
                 # Creating file name
@@ -133,11 +133,13 @@ if __name__ == '__main__':
                 ds_dynamic['effort'] = xr.where(ds_dynamic.time == ds_dynamic.time[t], 
                                                 eff_short.values, ds_dynamic['effort'])
         
-        # Running gridded DBPM
-        # ds_init = uf.gridded_sizemodel(gridded_params, ds_fixed, ds_init, 
-        #                                ds_dyn, region = reg, model_res = res, 
-        #                                out_folder = out_folder)
-        ds_init = uf.gridded_sizemodel_rk4(gridded_params, ds_fixed, ds_init, 
-                                           ds_dyn, region = reg, model_res = res, 
-                                           out_folder = out_folder, force_finite = False,
-                                           rk4_substeps = 4)
+        ds_init = uf.gridded_sizemodel(gridded_params, ds_fixed, ds_init, 
+                                       ds_dyn, region = reg, model_res = res, 
+                                       out_folder = out_folder)
+        # ds_init = uf.gridded_sizemodel_rk4(gridded_params, ds_fixed, ds_init, 
+        #                                    ds_dyn, region = reg, model_res = res, 
+        #                                    out_folder = out_folder, rk4_substeps = 4)
+        # ds_init = uf.gridded_sizemodel_solve_ivp(gridded_params, ds_fixed, ds_init, 
+        #                                          ds_dyn, region = reg, model_res = res, 
+        #                                          out_folder = out_folder)
+

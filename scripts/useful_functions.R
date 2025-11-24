@@ -332,8 +332,7 @@ gravitymodel <- function(effort, prop_b, depth, iter){
 
   
 # Run model per grid cell or averaged over an area ------
-sizemodel <- function(params, ERSEM_det_input = F, temp_effect = T,
-                      use_init = F, new_detritus_calc = F){
+sizemodel <- function(params, temp_effect = T, use_init = F){
   with(params,{
     # Model for a dynamical ecosystem comprised of: two functionally distinct 
     # size spectra (predators and detritivores), size structured primary 
@@ -620,61 +619,50 @@ sizemodel <- function(params, ERSEM_det_input = F, temp_effect = T,
       
       #Detritus Biomass Density Pool - fluxes in and out (g.m-2.yr-1) of 
       #detritus pool and solve for detritus biomass density in next time step 
-      if(!ERSEM_det_input){
-        #considering pelagic faeces as input as well as dead bodies from both 
-        #pelagic and benthic communities and phytodetritus (dying sinking
-        #phytoplankton)
-        if(detritus_coupling){
-          # pelagic spectrum inputs (sinking dead bodies and faeces) - export 
-          # ratio used for "sinking rate" + benthic spectrum inputs (dead stuff
-          # already on/in seafloor)
-          input_w <- (sinking_rate[i]* 
-                        (sum(defbypred[ind_min_pred_size:numb_size_bins]*
-                               log_size_increase)+
-                           sum(pel_tempeffect[i]*other_mort_pred*predators[, i]*
-                                 size_bins_vals*log_size_increase) + 
-                           sum(pel_tempeffect[i]*senes_mort_pred*predators[, i]*
-                                 size_bins_vals*log_size_increase)) +
-                        (sum(ben_tempeffect[i]*other_mort_det*detritivores[, i]*
-                               size_bins_vals*log_size_increase) + 
-                           sum(ben_tempeffect[i]*senes_mort_det*
-                                 detritivores[, i]*size_bins_vals*
-                                 log_size_increase)))
-        }else{
-          input_w <- sum(ben_tempeffect[i]*other_mort_det*detritivores[, i]*
-                           size_bins_vals*log_size_increase)+ 
-            sum(ben_tempeffect[i]*senes_mort_det*detritivores[, i]*
-                  size_bins_vals*log_size_increase)
-        }
+      
+      #considering pelagic faeces as input as well as dead bodies from both 
+      #pelagic and benthic communities and phytodetritus (dying sinking
+      #phytoplankton)
+      # Temperature effects removed from senescence mortality on 2025-08-14
+      # top match total mortality calculation above
+      # Senescense mortality removed altoghether from detritus calculations
+      # after discussion with Julia on 2025-08-15
+      if(detritus_coupling){
+        # pelagic spectrum inputs (sinking dead bodies and faeces) - export 
+        # ratio used for "sinking rate" + benthic spectrum inputs (dead stuff
+        # already on/in seafloor)
+        # removing temperature effects from senescence mortality to match
+        # total mortality calculations above. Changed on 2025-08-14
+        input_w <- (sinking_rate[i]* 
+                      (sum(defbypred[ind_min_pred_size:numb_size_bins]*
+                             log_size_increase)+
+                         sum(pel_tempeffect[i]*other_mort_pred*predators[, i]*
+                               size_bins_vals*log_size_increase)+
+                         sum(pel_tempeffect[i]*senes_mort_pred*predators[, i]*
+                               size_bins_vals*log_size_increase))+
+                      (sum(ben_tempeffect[i]*other_mort_det*detritivores[, i]*
+                             size_bins_vals*log_size_increase)+
+                         sum(ben_tempeffect[i]*senes_mort_det*
+                               detritivores[, i]*size_bins_vals*
+                               log_size_increase)))
+      }else{
+        input_w <- sum(ben_tempeffect[i]*other_mort_det*detritivores[, i]*
+                         size_bins_vals*log_size_increase)+
+          sum(senes_mort_det*detritivores[, i]*size_bins_vals*log_size_increase)
+      }
         
         # get burial rate from Dunne et al. 2007 equation 3
         burial <- input_w*(0.013+0.53*input_w^2/(7+input_w)^2)
         output_w <- output_w+burial
         
-        if(new_detritus_calc){
-          # losses from detritivory + burial rate (not including remineralisation
-          # bc that goes to p.p. after sediment, we are using realised p.p. as
-          # inputs to the model) 
-          dW <- (exp(-output_w*timesteps_years)+
-                  (input_w/output_w)*
-                  (1-exp(-output_w*timesteps_years)))
+        # losses from detritivory + burial rate (not including remineralisation
+        # bc that goes to p.p. after sediment, we are using realised p.p. as
+        # inputs to the model) 
+        dW <- input_w-output_w
           
-          #biomass density of detritus g.m-2
-          detritus[i+1] <- detritus[i]*dW
-        }else{
-          # losses from detritivory + burial rate (not including remineralisation
-          # bc that goes to p.p. after sediment, we are using realised p.p. as
-          # inputs to the model) 
-          dW <- input_w-output_w
-          
-          #biomass density of detritus g.m-2
-          detritus[i+1] <- detritus[i]+dW*timesteps_years
-        }
-      }
-      if(ERSEM_det_input){
-        detritus[i+1] <- detritus[i]
-      }
-      
+        #biomass density of detritus g.m-2
+        detritus[i+1] <- detritus[i]+dW*timesteps_years
+
       # Pelagic Predator Density (nos.m-2)- solve for time + timesteps_years 
       # using implicit time Euler upwind finite difference (help from Ken 
       # Andersen and Richard Law)
@@ -794,16 +782,13 @@ sizemodel <- function(params, ERSEM_det_input = F, temp_effect = T,
 
 # Running model with time series ----
 run_model <- function(fishing_params, dbpm_inputs, withinput = T, 
-                      new_detritus_calc = F, xmin_consumer_u = -3, 
-                      xmin_consumer_v = -3){
+                      xmin_consumer_u = -3, xmin_consumer_v = -3){
   #Inputs:
   # fishing_params (list) - Fishing parameters produced by the `sizeparam` 
   # function
   # dbpm_inputs (data frame) - Climate and fishing forcing data produced in
   # script 03_processing_effort_fishing_inputs.R
   # withinput (boolean) - Default is TRUE. ????
-  # new_detritus_calc (boolean) - Indicates whether or not the new detritus
-  # calculation method should applied
   # xmin_consumer_u (integer) - Default is -3. This is the minimum body size 
   # in grams for predators. This parameter represents the exponent using a 
   # base of 10. When using default value -3, this means the minimum size for 
@@ -870,8 +855,8 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = T,
 
 # Comparing observed and predicted fish biomass ----
 getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F, 
-                     figure_folder = NULL, new_detritus_calc, 
-                     xmin_consumer_u = -3, xmin_consumer_v = -3){
+                     figure_folder = NULL, xmin_consumer_u = -3,
+                     xmin_consumer_v = -3){
   #Inputs:
   # fishing_params (data frame) - Contains fishing parameters
   # dbpm_inputs (data frame) - Climate and fishing forcing data
@@ -881,8 +866,6 @@ getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F,
   # predicted and observed values is calculated
   # figure_folder (character) - Optional. Full path to the folder where figures
   # comparing observed and predicted data will be stored
-  # new_detritus_calc (boolean) - Indicates whether or not the new detritus
-  # calculation method should applied
   # xmin_consumer_u (integer) - Default is -3. This is the minimum body size 
   # in grams for predators. This parameter represents the exponent using a 
   # base of 10. When using default value -3, this means the minimum size for 
@@ -910,7 +893,6 @@ getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F,
   
   #Running model
   result <- run_model(fishing_params, dbpm_inputs, 
-                      new_detritus_calc = new_detritus_calc, 
                       xmin_consumer_u = xmin_consumer_u, 
                       xmin_consumer_v = xmin_consumer_v)
 
@@ -929,32 +911,30 @@ getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F,
   if(corr){
     corr_nas <- tryCatch({
       #Calculate correlation between observed and predicted catches
-      corr_nas <- data.frame(cor = cor(error_calc$mean_obs_catch_yr, 
-                                       error_calc$mean_total_catch_yr, 
-                                       use = "complete.obs"),
-                             #Get number of rows with NA values
-                             catchNA = sum(is.na(error_calc$mean_total_catch_yr)),
-                             region = region_name)
+      data.frame(cor = cor(error_calc$mean_obs_catch_yr, 
+                           error_calc$mean_total_catch_yr, 
+                           use = "complete.obs"),
+                 #Get number of rows with NA values
+                 catchNA = sum(is.na(error_calc$mean_total_catch_yr)),
+                 region = region_name)
     },
     error = function(e){
       message(paste0("No mean catch estimates available in this simulation ",
                      "from ", year_int))
       message(conditionMessage(e))
-      corr_nas <- data.frame(cor = NA,
-                             #Get number of rows with NA values
-                             catchNA = sum(is.na(error_calc$mean_total_catch_yr)),
-                             region = region_name)
-      return(corr_nas)
+      data.frame(cor = NA,
+                 #Get number of rows with NA values
+                 catchNA = sum(is.na(error_calc$mean_total_catch_yr)),
+                 region = region_name)
     },
     warning = function(w){
       message(paste0("No mean catch estimates available in this simulation ",
                      "from ", year_int))
       message(conditionMessage(w))
-      corr_nas <- data.frame(cor = NA,
-                             #Get number of rows with NA values
-                             catchNA = sum(is.na(error_calc$mean_total_catch_yr)),
-                             region = region_name)
-      return(corr_nas)
+      data.frame(cor = NA,
+                 #Get number of rows with NA values
+                 catchNA = sum(is.na(error_calc$mean_total_catch_yr)),
+                 region = region_name)
     })
     
     #If a path to save figures is provided, create figures and save 
@@ -1074,8 +1054,7 @@ LHSsearch <- function(num_iter = 1, search_volume = "estimated", seed = 1234,
   no_cores <- round((detectCores()*.75), 0)
   fishing_params$rmse <- mclapply(1:nrow(fishing_params), 
                                   FUN = function(i) 
-                                    getError(fishing_params[i,], dbpm_inputs, 
-                                             new_detritus_calc = new_detritus_calc), 
+                                    getError(fishing_params[i,], dbpm_inputs), 
                                   mc.cores = no_cores) |> 
     unlist()
   
@@ -1120,7 +1099,7 @@ LHSsearch <- function(num_iter = 1, search_volume = "estimated", seed = 1234,
 
 # Correlation and calibration plots ----
 corr_calib_plots <- function(fishing_params, dbpm_inputs,
-                             figure_folder = NULL, new_detritus_calc){
+                             figure_folder = NULL){
   #Inputs:
   # fishing_params (named numeric vector) - Single column with named rows 
   # containing LHS parameters
@@ -1135,8 +1114,7 @@ corr_calib_plots <- function(fishing_params, dbpm_inputs,
   
   #Calculate correlations with tuned fishing parameters and save plots
   corr_nas <- getError(fishing_params, dbpm_inputs, year_int = 1950,
-                       corr = T, figure_folder = figure_folder, 
-                       new_detritus_calc = new_detritus_calc)
+                       corr = T, figure_folder = figure_folder)
   
   return(corr_nas)
 }

@@ -2,10 +2,10 @@
 This repository contains all code necessary to process inputs used by DBPM. This repository has been redesigned to use both Python and R as part of the model workflow. Following protocol ISIMIP3A, this simulation uses inputs from GFDL-MOM6-COBALT2 at two horizontal resolutions: $0.25^{\circ}$ (original) and $1^{\circ}$ (coarsen).  
   
 ## Step 1. Processing DBPM climate inputs at a global scale
-- Script [`01_processing_dbpm_global_inputs.ipynb`](scripts/01_processing_dbpm_global_inputs.ipynb) processes environmental data needed to force the DBPM model at a global scale. GFDL-MOM6-COBALT2 output files are transformed from `netCDF` to analysis ready `zarr` files. Files for `spinup` period are also created here.  
+- Script [`01_processing_dbpm_global_inputs.ipynb`](scripts/01_processing_dbpm_global_inputs.ipynb) processes environmental data needed to force the DBPM model at a global scale. GFDL-MOM6-COBALT2 output files are transformed from *netCDF* to analysis ready *zarr* files. Files for `spinup` period are also created here.  
   
 ## Step 2. Processing DBPM climate inputs at a regional scale
-- Script [`02_processing_dbpm_regional_inputs.py`](scripts/02_processing_dbpm_regional_inputs.py) uses `zarr` files produced in the previous step to extract data for an area of interest. In this notebook, we use the FAO Major Fishing Areas to run DBPM in smaller chunks.
+- Script [`02_processing_dbpm_regional_inputs.py`](scripts/02_processing_dbpm_regional_inputs.py) uses *zarr* files produced in the previous step to extract data for an area of interest. In this notebook, we use the FAO Major Fishing Areas to run DBPM in smaller chunks.
 
 ## Step 3. Processing DBPM fishing inputs at a regional scale
 - Script [`03_processing_effort_fishing_inputs.R`](scripts/03_processing_effort_fishing_inputs.R) processes fishing catch and effort data for all FAO regions. It creates a single file per region that includes fishing and climate data. This file has all variables needed to run DBPM within the boundaries of the FAO area.
@@ -13,7 +13,7 @@ This repository contains all code necessary to process inputs used by DBPM. This
 ## Step 4. Calculating fishing mortality parameters
 - Script [`04_calculating_dbpm_fishing_params.R`](scripts/04_calculating_dbpm_fishing_params.R) does the following:  
     - Estimates fishing mortality parameters (catchability and selectivities for each functional group)  
-    - Checks and adjusts the `search volume` parameter  
+    - Checks and adjusts the `search_volume` parameter  
     - Creates and saves calibration plots in PDF format  
 Plots created in this script can be used to visually inspect the fit of predicted catches against observed (reconstructed) catch data.
 
@@ -47,8 +47,8 @@ You can also run these scripts in your own computer or a different server, but y
         * If possible, contact the NCI scheme manager at your institution to find out what NCI project you should use to sign up for your NCI account. This account will provide you with computing power.    
 2. [Join relevant NCI projects](https://access-hive.org.au/getting_started/first_steps/#join-relevant-nci-projects)
       * Request to join the following NCI projects:  
-        * vf71 - for access to GFDL-MOM6-COBALT2 outputs in analysis ready data format 
-        * xp65 - for the Python conda environment   
+        * `vf71` - for access to GFDL-MOM6-COBALT2 outputs in analysis ready data format 
+        * `xp65` - for the Python conda environment   
       * Note that it can take a few business day get approved as a project member
 3. [Verify that you can log into NCI’s Gadi](https://access-hive.org.au/getting_started/first_steps/#login-to-gadi)  
       * Note that it usually takes more than 30 minutes for your account to be created  
@@ -56,7 +56,7 @@ You can also run these scripts in your own computer or a different server, but y
 
 ## Accessing forcing data 
 ### Ocean outputs from GFDL-MOM6-COBALT2
-The environmental data comes from GFDL-MOM6-COBALT2, which is available at two horizontal resolutions: $0.25^{\circ}$ (original model outputs) and ($1^{\circ}$, coarsen from original outputs). The original GFDL-MOM6-COBALT2 outputs can be downloaded from the [Inter-Sectoral Impact Model Intercomparison Project (ISIMIP) Data Portal](https://data.isimip.org/search/tree/ISIMIP3a/InputData/climate/ocean/gfdl-mom6-cobalt2/) as `netCDF` files. However, you can also access GFDL-MOM6-COBALT2 outputs as `zarr` files from project `vf71` at the [National Computational Infrastructure (NCI)](https://nci.org.au/).  
+The environmental data comes from GFDL-MOM6-COBALT2, which is available at two horizontal resolutions: $0.25^{\circ}$ (original model outputs) and ($1^{\circ}$, coarsen from original outputs). The original GFDL-MOM6-COBALT2 outputs can be downloaded from the [Inter-Sectoral Impact Model Intercomparison Project (ISIMIP) Data Portal](https://data.isimip.org/search/tree/ISIMIP3a/InputData/climate/ocean/gfdl-mom6-cobalt2/) as *netCDF* files. However, you can also access GFDL-MOM6-COBALT2 outputs as *zarr* files from project `vf71` at the [National Computational Infrastructure (NCI)](https://nci.org.au/).  
   
 ### Fishing effort and catch data
 The fishing data were obtained from 'ISIMIP3a reconstructed fishing activity data (v1.0)' ([Novaglio et al. 2024](https://data.isimip.org/10.48364/ISIMIP.240282)). A copy of this dataset is also available under project `vf71` at the [National Computational Infrastructure (NCI)](https://nci.org.au/).  
