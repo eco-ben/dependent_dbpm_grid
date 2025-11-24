@@ -911,32 +911,30 @@ getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F,
   if(corr){
     corr_nas <- tryCatch({
       #Calculate correlation between observed and predicted catches
-      corr_nas <- data.frame(cor = cor(error_calc$mean_obs_catch_yr, 
-                                       error_calc$mean_total_catch_yr, 
-                                       use = "complete.obs"),
-                             #Get number of rows with NA values
-                             catchNA = sum(is.na(error_calc$mean_total_catch_yr)),
-                             region = region_name)
+      data.frame(cor = cor(error_calc$mean_obs_catch_yr, 
+                           error_calc$mean_total_catch_yr, 
+                           use = "complete.obs"),
+                 #Get number of rows with NA values
+                 catchNA = sum(is.na(error_calc$mean_total_catch_yr)),
+                 region = region_name)
     },
     error = function(e){
       message(paste0("No mean catch estimates available in this simulation ",
                      "from ", year_int))
       message(conditionMessage(e))
-      corr_nas <- data.frame(cor = NA,
-                             #Get number of rows with NA values
-                             catchNA = sum(is.na(error_calc$mean_total_catch_yr)),
-                             region = region_name)
-      return(corr_nas)
+      data.frame(cor = NA,
+                 #Get number of rows with NA values
+                 catchNA = sum(is.na(error_calc$mean_total_catch_yr)),
+                 region = region_name)
     },
     warning = function(w){
       message(paste0("No mean catch estimates available in this simulation ",
                      "from ", year_int))
       message(conditionMessage(w))
-      corr_nas <- data.frame(cor = NA,
-                             #Get number of rows with NA values
-                             catchNA = sum(is.na(error_calc$mean_total_catch_yr)),
-                             region = region_name)
-      return(corr_nas)
+      data.frame(cor = NA,
+                 #Get number of rows with NA values
+                 catchNA = sum(is.na(error_calc$mean_total_catch_yr)),
+                 region = region_name)
     })
     
     #If a path to save figures is provided, create figures and save 
