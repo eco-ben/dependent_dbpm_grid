@@ -5,6 +5,7 @@ library(dplyr)
 library(arrow)
 library(jsonlite)
 library(purrr)
+library(GGally)
 library(tibble)
 
 # Loading DBPM climate and fishing inputs ---------------------------------
@@ -13,15 +14,18 @@ fao <- list.dirs(base_folder, recursive = F, full.names = F) |>
   str_subset(pattern = "fao-")
 
 # Define search volume
-search_volume <- 0.64
+search_volume <- 0.5
 
 # Fishing parameters already created?
-params_ready <- T
+params_ready <- F
+
+# Number of iterations (minimum recommend - 500 iterations)
+no_iter <- 500
 
 # "smoothed" can be either NULL to use original inputs, 'smoothed' to use LOESS
 # smoothed inputs or 'deseasoned' to use deseasoned inputs
 # outputs to force DBPM
-smoothed <- "deseasoned"
+smoothed <- NULL
 if(!is.null(smoothed)){
   fn_search <- "-smoothed"
   smoothed <- paste0("-", smoothed)
@@ -42,11 +46,10 @@ for(f in fao){
   #Path to folder where results will be stored
   results_folder <- file.path(base_folder, f, "fishing_params",
                               paste0("best_fish_params", smoothed))
-  #Number of iterations
-  no_iter <- 100
+  
   if(!params_ready){
     params_calibration <- LHSsearch(num_iter = no_iter,
-                                    search_volume = search_volume,
+                                    search_volume = search_volume, 
                                     forcing_file = dbpm_inputs,
                                     gridded_forcing = NULL,
                                     best_val_folder = results_folder,
@@ -93,6 +96,16 @@ for(f in fao){
           file.path(results_folder, 
                     paste0("best-fishing-parameters_", f, "_searchvol_", 
                            search_volume, "_numb-iter_", no_iter, ".parquet")))
+      # Create pair plot and save it
+      p1 <- params_calibration |> 
+        mutate(qc = ifelse(cor >= 0.5, "good", "bad")) |>
+        ggpairs(columns = 2:8, aes(color = qc))
+      p1 |> 
+        ggsave(filename = 
+                 file.path(results_folder, 
+                           paste0("corr_plot_best-fishing-parameters_", f, 
+                                  "_searchvol_", search_volume, "_numb-iter_",
+                                  no_iter, ".png")))
       # Calibration plots to be done after all fishing parameters are calculated
       #Filter best fishing parameters
       good <- params_calibration |> 
@@ -129,8 +142,8 @@ for(f in fao){
 fish_param <- fao |> 
   map_chr(\(x) file.path(base_folder, x, "fishing_params",
                          paste0("best_fish_params", smoothed))) |> 
-  list.files(pattern = "best-fishing-parameters", recursive = T,
-                          full.names = T) |> 
+  list.files(pattern = "best-fishing-parameters", recursive = T, 
+             full.names = T) |> 
   str_subset(paste0("searchvol_", search_volume)) |> 
   map(~read_parquet(.)) |> 
   bind_rows()
@@ -149,7 +162,7 @@ bad_params <- fao[!fao %in% good_params]
 
 # Since correlation is below 0.5 and the plots comparing estimates and obs do 
 # not look like a great fit, we will calculate fishing parameters again 
-no_iter <- 500
+no_iter <- 1000
 
 for(f in bad_params){
   dbpm_inputs <- file.path(base_folder, f, paste0("monthly_weighted", smoothed),
@@ -164,7 +177,7 @@ for(f in bad_params){
   
   params_calibration_optim <- LHSsearch(num_iter = no_iter, 
                                         search_volume = search_volume,
-                                        seed = 42,
+                                        seed = 32,
                                         forcing_file = dbpm_inputs, 
                                         gridded_forcing = NULL, 
                                         best_val_folder = results_folder, 
@@ -197,7 +210,8 @@ for(f in bad_params){
     filter(rmse == min(rmse))
   #If nothing is returned, select lowest RMSE
   if(nrow(good) == 0){
-    good <- params_calibration |> 
+    good <- params_calibration_optim |> 
+      filter(cor == max(cor)) |> 
       filter(rmse == min(rmse))
   }
   
