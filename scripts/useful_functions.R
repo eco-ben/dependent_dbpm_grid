@@ -810,7 +810,7 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = T,
   
   # run model through time
   # TO DO IN SIZEMODEL CODE: make fishing function like one in model template
-  result_set <- sizemodel(params, new_detritus_calc = new_detritus_calc)
+  result_set <- sizemodel(params)
   size_bins <- 10^params$log10_size_bins
   
   if(withinput){
@@ -996,8 +996,7 @@ getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F,
 #Carry out LHS param search ----
 LHSsearch <- function(num_iter = 1, search_volume = "estimated", seed = 1234,
                       forcing_file = NULL, gridded_forcing = NULL, 
-                      best_param = T, best_val_folder = NULL, 
-                      new_detritus_calc = F){
+                      best_param = T, best_val_folder = NULL){
   #Inputs:
   # num_iter (integer) - Number of individual runs. Default is 1.
   # search_volume (character or numeric) - Default is "estimated". It also takes
