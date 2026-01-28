@@ -96,16 +96,29 @@ for(f in fao){
           file.path(results_folder, 
                     paste0("best-fishing-parameters_", f, "_searchvol_", 
                            search_volume, "_numb-iter_", no_iter, ".parquet")))
-      # Create pair plot and save it
-      p1 <- params_calibration |> 
-        mutate(qc = ifelse(cor >= 0.5, "good", "bad")) |>
-        ggpairs(columns = 2:8, aes(color = qc))
+      
+      # Prepare data to create correlation plot
+      p1_data <- params_calibration |> 
+        select(fmort_u:fminx_v, rmse:cor) |> 
+        mutate(qc = ifelse(cor >= 0.5, "good", "bad"))
+        
+      # Apply different design to plot based on data available
+      if(sum(table(p1_data$qc) <= 1)){
+        p1 <- p1_data |> 
+          ggpairs(columns = 1:6, aes(alpha = 0.5))
+      }else{
+        p1 <- p1_data |> 
+          ggpairs(columns = 1:6, aes(color = qc, alpha = 0.5))
+      }
+      
+      # Save correlation plot
       p1 |> 
         ggsave(filename = 
                  file.path(results_folder, 
                            paste0("corr_plot_best-fishing-parameters_", f, 
                                   "_searchvol_", search_volume, "_numb-iter_",
                                   no_iter, ".png")))
+      
       # Calibration plots to be done after all fishing parameters are calculated
       #Filter best fishing parameters
       good <- params_calibration |> 
