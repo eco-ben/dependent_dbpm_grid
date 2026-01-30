@@ -155,7 +155,7 @@ for(f in fao){
 fish_param <- fao |> 
   map_chr(\(x) file.path(base_folder, x, "fishing_params",
                          paste0("best_fish_params", smoothed))) |> 
-  list.files(pattern = "best-fishing-parameters", recursive = T, 
+  list.files(pattern = "^best-fishing-parameters", recursive = T, 
              full.names = T) |> 
   str_subset(paste0("searchvol_", search_volume)) |> 
   map(~read_parquet(.)) |> 
@@ -246,8 +246,9 @@ out_folder <- "/g/data/vf71/fishmip_outputs/ISIMIP3a/fao_outputs"
 fishing_params <- fao |> 
   map_chr(\(x) file.path(base_folder, x, "fishing_params",
                                     paste0("best_fish_params", smoothed))) |> 
-  list.files(pattern = "best-fishing-parameters", recursive = T,
+  list.files(pattern = "^best-fishing-parameters", recursive = T,
                           full.names = T) |> 
+  str_subset(paste0("searchvol_", search_volume)) |> 
   # Load all fishing parameter files for coarser resolution
   map(~read_parquet(.)) |> 
   bind_rows() |> 
@@ -287,6 +288,13 @@ for(f in fao){
   # conditions to be used in the gridded DBPM
   init_results <- run_model(fish_param, dbpm_inputs, withinput = F, 
                             xmin_consumer_u = -3, xmin_consumer_v = -3)
+  
+  # Saving initial results for non-spatial run
+  init_results |> 
+    #Ensuring up to 10 decimal places are saved in file
+    write_json(file.path(dbpm_out_folder, 
+                         paste0("init_dbpm_nonspatial_", f, ".json")), 
+               digits = 10)
   
   # Prepare fishing parameters for gridded DBPM 
   pred_initial <- rowMeans(init_results$predators)
