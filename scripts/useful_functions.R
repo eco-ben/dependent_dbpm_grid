@@ -1119,49 +1119,134 @@ corr_calib_plots <- function(fishing_params, dbpm_inputs,
 }
 
 
-# Size spectrum plots ----
-plotsizespectrum <- function(modeloutput, params, timeaveraged = F){
+# Extracting density data from DBPM calibration (non-spatial) runs ----
+dbpm_density_mat_to_df <- function(dbpm_outputs, dbpm_temporal_range){
   #Inputs:
-  # modeloutput (named list) - Output from `sizemodel` function
-  # params (data frame) - Single row containing fishing parameters
-  # timeaveraged (boolean) - Default is False. If False, the predator and 
-  # detritivore values from the last time step are plotted. If True, the average
-  # predator and detritivore values are plotted
+  # dbpm_outputs (named list) - Output from `run_model` function
+  # dbpm_temporal_range (date vector) - Vector containing dates for each time
+  # step included in the DBPM run. 
+  #
+  #Output:
+  # bio_data (data frame) Contains predator, detritivore and detritus density
+  # values by size class for each time step included in the DBPM calibration 
+  # run. It also includes a "decade" column.
+  #
+  
+  # Get size bins from DBPM outputs
+  size_bins <- dbpm_outputs$params$log10_size_bins
+  
+  # Prepare predator data
+  pred <- as.data.frame(dbpm_outputs$predators, row.names = size_bins)
+  # Add timestamps
+  colnames(pred) <- dbpm_temporal_range
+  # Reorganise data
+  pred <- pred |> 
+    rownames_to_column("size_class") |> 
+    pivot_longer(!size_class, names_to = "time", values_to = "predators")
+  
+  # Prepare detritivore data
+  detrit <- as.data.frame(dbpm_outputs$detritivores, row.names = size_bins)
+  # Add timestamps
+  colnames(detrit) <- dbpm_temporal_range
+  # Reorganise data
+  detrit <- detrit |> 
+    rownames_to_column("size_class") |> 
+    pivot_longer(!size_class, names_to = "time", values_to = "detritivores")
+  
+  # Prepare detritus data
+  detritus <- data.frame(detritus = dbpm_outputs$detritus,
+                         row.names = as.character(dbpm_temporal_range)) |> 
+    rownames_to_column("time")
+  
+  #Creating a single data frame with density outputs for all groups
+  bio_data <- pred |> 
+    full_join(detrit, by = c("size_class", "time")) |> 
+    full_join(detritus, by = "time") |> 
+    # Add column classifying estimates per decade 
+    mutate(time = as_date(time), decade = ((year(time)-1) %/% 10)*10,
+           size_class = as.numeric(size_class), .before = predators) |> 
+    relocate(size_class, .before = predators)
+  
+  #Return data about density
+  return(bio_data)
+}
+
+
+# Size spectrum plots ----
+plotsizespectrum <- function(density_df, params, region, mean_decade = F, 
+                             nrow = 2){
+  #Inputs:
+  # density_df (data frame) - Output from the `dbpm_density_mat_to_df` function
+  # params (named list) - Containing DBPM parameters produced by the `run_model`
+  # function
+  # region (character) - Name of region being plotted
+  # mean_decade (boolean) - Default is False. If False, predator and detritivore
+  # values from the last time step are plotted. If True, the mean predator and
+  # detritivore values per decade are plotted
+  # nrow (integer) - Default is 2. Number of rows to be included in plot.
   #
   #Output:
   # Size spectrum plot
   #
   with(params, {
-    pred_size <- ind_min_pred_size:numb_size_bins
-    det_size <- ind_min_detritivore_size:numb_size_bins
-    # plot changes in the two size spectra over time
-    if(timeaveraged){
-      predators <- rowMeans(modeloutput$predators[pred_size], na.rm = T)
-      detritivores <- rowMeans(modeloutput$detritivores[det_size], na.rm = T)
+    # Get the size class fished for each group from DBPM parameters
+    pred_size <- log10_size_bins[ind_min_pred_size:numb_size_bins]
+    det_size <- log10_size_bins[ind_min_detritivore_size:numb_size_bins]
+    
+    # Prepare data depending on whether or not decadal means are requested
+    if(mean_decade){
+      plot_data <- density_df |> 
+        group_by(decade, size_class) |> 
+        summarise(across(c(predators, detritivores), ~ mean(.x, na.rm = T)))
     }else{
-      predators <- modeloutput$predators[pred_size, numb_time_steps]
-      detritivores <- modeloutput$detritivores[det_size, numb_time_steps]
+      plot_data <- density_df |> 
+        filter(time == max(time, na.rm = T))
     }
     
-    maxy <- max(log10(predators), na.rm = T)
+    # Ensure only data for fished classes is included in plots
+    plot_data <- plot_data |> 
+      mutate(predators = ifelse(!size_class %in% pred_size, NA, 
+                                log10(predators)),
+             detritivores = ifelse(!size_class %in% det_size, NA, 
+                                   log10(detritivores))) |> 
+      drop_na(detritivores, predators) |> 
+      pivot_longer(predators:detritivores, names_to = "group", 
+                   values_to = "bio") |> 
+      ungroup()
+    
+    # Calculate maximum predator value to set y-axis limit
+    maxy <- max(plot_data$predators, na.rm = T)*1.1
     miny <- -20
     
-    plot(log10_size_bins[pred_size], log10(predators), type = "l", 
-         col = "#004488", cex = 1.6, ylab = "", xlab = "",
-         xlim = c(min_log10_detritivore, max_log10_pred), 
-         ylim = c(miny, maxy))
-    points(log10_size_bins[det_size], log10(detritivores), lty = 2,
-           type = "l", col = "#cc3311", cex = 1.6, ylab = "", xlab = "")
-    title(ylab = expression("log abundance density [m"^-3* "]"), line = 2.5,
-          xlab = "log body mass [g]")
-    text(min_log10_detritivore+abs(0.05*min_log10_detritivore),
-         miny+abs(0.3*miny), paste("pel.pref = ", round(pref_pelagic, 2),
-                                   sep = ""), pos = 4)
-    text(min_log10_detritivore+abs(0.05*min_log10_detritivore),
-         miny+abs(0.2*miny), paste("ben.pref = ", round(pref_benthos, 2),
-                                   sep = ""), pos = 4)
-    legend(max_log10_pred-0.3*(max_log10_pred-min_log10_detritivore),
-           maxy-0.04*maxy, c("Predators", "Detritivores"),
-           col = c("#004488", "#cc3311"), lwd = 1.5, lty = c(1, 2))
+    
+    p1 <- plot_data |> 
+      ggplot(aes(size_class, bio, colour = group, linetype = group))+
+      geom_line()+
+      scale_colour_manual(values = c("#33a02c", "#1f78b4"))+
+      scale_linetype_manual(values = c(2, 1))+
+      lims(x = c(min_log10_detritivore, max_log10_pred),
+           y = c(miny, maxy))+
+      labs(y = expression("" *log[10] ~ "abundance density (m"^-3* ")"),
+           x = expression("" *log[10] ~ "body mass (g)"),
+           title = paste0("Calibration (non-spatial) run - ",
+                          str_replace_all(str_to_upper(region), "-", " ")),
+           colour = "Size-structured\ncommunities",
+           linetype = "Size-structured\ncommunities",
+           caption = paste0("Pelagic preference: ", 
+                            round(params$pref_pelagic, 3),
+                            "\nBenthic preference: ", 
+                            round(params$pref_benthos, 3)))+
+      theme_bw()+
+      theme(panel.grid.minor = element_blank(), legend.title.position = "left",
+            legend.title = element_text(hjust = 0.5, size = 10),
+            legend.position = "top", legend.text = element_text(size = 10),
+            legend.direction = "horizontal", 
+            plot.caption = element_text(size = 11),
+            plot.title = element_text(hjust = 0.5, face = "bold"))
+    
+    if(mean_decade){
+      p1 <- p1+facet_wrap(~decade, nrow = nrow)
+    }
+    return(p1)
   })
-}	# end plot function
+}
