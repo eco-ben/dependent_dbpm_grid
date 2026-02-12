@@ -102,17 +102,20 @@ for(f in fao){
       # Prepare data to create correlation plot
       p1_data <- params_calibration |> 
         select(fmort_u:fminx_v, rmse:cor) |> 
+        filter(cor >= 0.2) |>
         mutate(qc = ifelse(cor >= 0.5, "good", "bad"))
         
       # Apply different design to plot based on data available
       if(sum(table(p1_data$qc) <= 1)){
         p1 <- p1_data |> 
           ggpairs(columns = 1:6, aes(alpha = 0.5))+
-          labs(title = str_replace(str_to_upper(f), "-", " "))
+          labs(title = str_replace(str_to_upper(f), "-", " "),
+               subtitle = "Showing parameter values when correlation >= 0.2")
       }else{
         p1 <- p1_data |> 
           ggpairs(columns = 1:6, aes(color = qc, alpha = 0.5))+
-          labs(title = str_replace(str_to_upper(f), "-", " "))
+          labs(title = str_replace(str_to_upper(f), "-", " "),
+               subtitle = "Showing parameter values when correlation >= 0.2")
       }
       
       # Save correlation plot
@@ -131,6 +134,7 @@ for(f in fao){
       #If nothing is returned, then use parameters for lowest rmse
       if(nrow(good) == 0){
         good <- params_calibration |> 
+          filter(cor > 0) |> 
           filter(rmse == min(rmse))
       }
       #Create plot with best performing parameters
@@ -252,7 +256,7 @@ for(f in bad_params){
   #If nothing is returned, select lowest RMSE
   if(nrow(good) == 0){
     good <- params_calibration_optim |> 
-      filter(cor == max(cor)) |> 
+      filter(cor > 0) |> 
       filter(rmse == min(rmse))
   }
   
@@ -269,23 +273,7 @@ for(f in bad_params){
 # Running DBPM calibration (non-spatial runs) -----------------------------
 out_folder <- "/g/data/vf71/fishmip_outputs/ISIMIP3a/fao_outputs"
 
-# Getting a list of files containing fishing parameters calculated for all 
-# regions
-fishing_params <- fao |> 
-  map_chr(\(x) file.path(base_folder, x, "fishing_params",
-                                    paste0("best_fish_params", smoothed))) |> 
-  list.files(pattern = "^best-fishing-parameters", recursive = T,
-                          full.names = T) |> 
-  str_subset(paste0("searchvol_", search_volume)) |> 
-  # Load all fishing parameter files for coarser resolution
-  map(~read_parquet(.)) |> 
-  bind_rows() |> 
-  group_by(region) |> 
-  # Find parameters with lowest RMSE and correlation of 0.5 or higher
-  filter(cor >= 0.5) |> 
-  filter(rmse == min(rmse))
-
-# Calculate initial conditions 
+# Start calibration runs
 for(f in fao){
   results_folder <- file.path(base_folder, f, "init_fish_vals", 
                               paste0("best_fish_vals", smoothed))
@@ -299,9 +287,24 @@ for(f in fao){
                                             "_", f, "_1841-2010.parquet")) |> 
     read_parquet()
   
+  fishing_params <- read_parquet(
+    list.files(file.path(base_folder, f, "fishing_params",
+                         paste0("best_fish_params", smoothed)), 
+               "^best-fishing-parameters_", full.names = T))
+    
+  # Find parameters with lowest RMSE and correlation of 0.5 or higher          
   fish_param <- fishing_params |> 
-    filter(region == str_replace(str_to_upper(f), "-", " "))
+    filter(cor >= 0.5) |> 
+    filter(rmse == min(rmse))
+  # If above condition is not met, then find the lowest RMSE but consider 
+  # results from runs with positive correlations
+  if(nrow(fish_param) == 0){
+    fish_param <- fishing_params |> 
+      filter(cor > 0) |> 
+      filter(rmse == min(rmse))
+  }
   
+  # Get parameters ready for calibration run
   params <- sizeparam(dbpm_inputs, fish_param, xmin_consumer_u = -3, 
                       xmin_consumer_v = -3)
   
@@ -334,26 +337,40 @@ for(f in fao){
                digits = 10)
   
   
-
-  ## Size spectrum plots ------------------------------------------------
+  ## Size spectrum plots per group (predators and detritivores) ---------
   # Transform density matrix to data frame to create plots
   density_df <- dbpm_density_mat_to_df(init_results, dbpm_inputs$time) |> 
     filter(decade >= 1960)
   
   # Create size spectrum plots
   size_sp_plot <- plotsizespectrum(density_df, init_results$params, f, 
-                                   fish_param, mean_decade = T, nrow = 2)
+                                   fishing_params = fish_param, mean_decade = T,
+                                   combined = F, nrow = 2)
   
   # Saving size spectrum plot for non-spatial runs
   ggsave(file.path(dbpm_out_folder, 
                    paste0("size_spectrum_two-groups_", f, ".png")), 
          size_sp_plot, bg = "white")
   
+  
+
+  ## Combined size spectrum plots ----------------------------------------
+  # Create size spectrum plots
+  size_sp_plot_all <- plotsizespectrum(density_df, init_results$params, f, 
+                                       fishing_params = fish_param, 
+                                       mean_decade = T, combined = T)
+  
+  # Saving size spectrum plot for non-spatial runs
+  ggsave(file.path(dbpm_out_folder, 
+                   paste0("size_spectrum_combined_", f, ".png")), 
+         size_sp_plot_all, bg = "white")
+  
 
   ########### Testing --------------
   
+  # Need to complete plots for growth rate
   
-  
+  ########### Testing --------------
   
   
   
