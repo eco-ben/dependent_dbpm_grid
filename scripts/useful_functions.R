@@ -15,6 +15,9 @@ library(parallel)
 library(ggplot2)
 library(lhs)
 library(patchwork)
+library(lubridate)
+library(cowplot)
+library(gridExtra)
 
 # Getting DBPM model parameters ready -------------------------------------
 sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12, 
@@ -1173,13 +1176,15 @@ dbpm_density_mat_to_df <- function(dbpm_outputs, dbpm_temporal_range){
 
 
 # Size spectrum plots ----
-plotsizespectrum <- function(density_df, params, region, mean_decade = F, 
-                             nrow = 2){
+plotsizespectrum <- function(density_df, params, region, fishing_params = NULL,
+                             mean_decade = F, nrow = 2){
   #Inputs:
   # density_df (data frame) - Output from the `dbpm_density_mat_to_df` function
   # params (named list) - Containing DBPM parameters produced by the `run_model`
   # function
   # region (character) - Name of region being plotted
+  # fishing_params (data frame) - Default is NULL. If provided, data frame 
+  # should include fishing parameters used to initialise model
   # mean_decade (boolean) - Default is False. If False, predator and detritivore
   # values from the last time step are plotted. If True, the mean predator and
   # detritivore values per decade are plotted
@@ -1215,9 +1220,7 @@ plotsizespectrum <- function(density_df, params, region, mean_decade = F,
       ungroup()
     
     # Calculate maximum predator value to set y-axis limit
-    maxy <- max(plot_data$predators, na.rm = T)*1.1
     miny <- -20
-    
     
     p1 <- plot_data |> 
       ggplot(aes(size_class, bio, colour = group, linetype = group))+
@@ -1225,7 +1228,7 @@ plotsizespectrum <- function(density_df, params, region, mean_decade = F,
       scale_colour_manual(values = c("#33a02c", "#1f78b4"))+
       scale_linetype_manual(values = c(2, 1))+
       lims(x = c(min_log10_detritivore, max_log10_pred),
-           y = c(miny, maxy))+
+           y = c(miny, max(plot_data$bio)*1.1))+
       labs(y = expression("" *log[10] ~ "abundance density (m"^-3* ")"),
            x = expression("" *log[10] ~ "body mass (g)"),
            title = paste0("Calibration (non-spatial) run - ",
@@ -1247,6 +1250,12 @@ plotsizespectrum <- function(density_df, params, region, mean_decade = F,
     if(mean_decade){
       p1 <- p1+facet_wrap(~decade, nrow = nrow)
     }
+    
+    if(!is.null(fishing_params)){
+      p1 <- plot_grid(p1, grid.arrange(tableGrob(fishing_params, rows = NULL)),
+                      nrow = 2, rel_heights = c(1, 0.1))
+    }
+    
     return(p1)
   })
 }

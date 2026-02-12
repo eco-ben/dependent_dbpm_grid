@@ -34,6 +34,8 @@ if(!is.null(smoothed)){
   smoothed <- ""
 }
 
+
+# Initial calibration loop ------------------------------------------------
 for(f in fao){
   # Load inputs (weighted means) - We will only use 1 deg inputs to calculate 
   # fishing parameters
@@ -42,7 +44,7 @@ for(f in fao){
                                           "_", f, "_1841-2010.parquet")) |> 
     read_parquet()
   
-  # Searching best fishing parameters values for area of interest -----------
+  ## Searching best fishing parameters values for area of interest ----------
   #Path to folder where results will be stored
   results_folder <- file.path(base_folder, f, "fishing_params",
                               paste0("best_fish_params", smoothed))
@@ -105,10 +107,12 @@ for(f in fao){
       # Apply different design to plot based on data available
       if(sum(table(p1_data$qc) <= 1)){
         p1 <- p1_data |> 
-          ggpairs(columns = 1:6, aes(alpha = 0.5))
+          ggpairs(columns = 1:6, aes(alpha = 0.5))+
+          labs(title = str_replace(str_to_upper(f), "-", " "))
       }else{
         p1 <- p1_data |> 
-          ggpairs(columns = 1:6, aes(color = qc, alpha = 0.5))
+          ggpairs(columns = 1:6, aes(color = qc, alpha = 0.5))+
+          labs(title = str_replace(str_to_upper(f), "-", " "))
       }
       
       # Save correlation plot
@@ -146,7 +150,7 @@ for(f in fao){
 }
 
 
-## Optimising underperforming regions --------------------------------------
+# Optimising underperforming regions --------------------------------------
 # This section may need to be ran multiple times until all regions have good
 # parameters
 
@@ -175,7 +179,7 @@ bad_params <- fao[!fao %in% good_params]
 
 # Since correlation is below 0.5 and the plots comparing estimates and obs do 
 # not look like a great fit, we will calculate fishing parameters again 
-no_iter <- 1000
+no_iter <- 2000
 
 for(f in bad_params){
   dbpm_inputs <- file.path(base_folder, f, paste0("monthly_weighted", smoothed),
@@ -183,14 +187,14 @@ for(f in bad_params){
                                             "_", f, "_1841-2010.parquet")) |> 
     read_parquet()
   
-  # Searching best fishing parameters values for area of interest -----------
+  ## Searching best fishing parameters values for area of interest ----------
   #Path to folder where results will be stored
   results_folder <- file.path(base_folder, f, "fishing_params",
                               paste0("best_fish_params", smoothed))
   
   params_calibration_optim <- LHSsearch(num_iter = no_iter, 
                                         search_volume = search_volume,
-                                        seed = 32,
+                                        seed = 42,
                                         forcing_file = dbpm_inputs, 
                                         gridded_forcing = NULL, 
                                         best_val_folder = results_folder, 
@@ -217,6 +221,30 @@ for(f in bad_params){
       paste0("best-fishing-parameters_", f, "_searchvol_", search_volume, 
              "_numb-iter_", no_iter, ".parquet")))
   
+  # Prepare data to create correlation plot
+  p1_data <- params_calibration_optim |> 
+    select(fmort_u:fminx_v, rmse:cor) |> 
+    mutate(qc = ifelse(cor >= 0.5, "good", "bad"))
+  
+  # Apply different design to plot based on data available
+  if(sum(table(p1_data$qc) <= 1)){
+    p1 <- p1_data |> 
+      ggpairs(columns = 1:6, aes(alpha = 0.5))+
+      labs(title = str_replace(str_to_upper(f), "-", " "))
+  }else{
+    p1 <- p1_data |> 
+      ggpairs(columns = 1:6, aes(color = qc, alpha = 0.5))+
+      labs(title = str_replace(str_to_upper(f), "-", " "))
+  }
+  
+  # Save correlation plot
+  p1 |> 
+    ggsave(filename = 
+             file.path(results_folder, 
+                       paste0("corr_plot_best-fishing-parameters_", f, 
+                              "_searchvol_", search_volume, "_numb-iter_",
+                              no_iter, ".png")))
+  
   #Identifying best performing parameters
   good <- params_calibration_optim |> 
     filter(cor >= 0.5) |> 
@@ -238,7 +266,7 @@ for(f in bad_params){
 }
 
 
-# Getting DBPM parameters -------------------------------------------------
+# Running DBPM calibration (non-spatial runs) -----------------------------
 out_folder <- "/g/data/vf71/fishmip_outputs/ISIMIP3a/fao_outputs"
 
 # Getting a list of files containing fishing parameters calculated for all 
@@ -284,6 +312,15 @@ for(f in fao){
                          paste0("dbpm_size_params_", f, ".json")), 
                digits = 10)
   
+  
+  # Defining folder to save non-spatial results
+  dbpm_out_folder <- file.path(out_folder, f, 
+                               paste0("fishing_runs", smoothed),
+                               "nonspatial")
+  if(!dir.exists(dbpm_out_folder)){
+    dir.create(dbpm_out_folder, recursive = T)
+  }
+  
   # Run non-spatial DBPM.  This step is necessary to get the initial 
   # conditions to be used in the gridded DBPM
   init_results <- run_model(fish_param, dbpm_inputs, withinput = F, 
@@ -295,6 +332,30 @@ for(f in fao){
     write_json(file.path(dbpm_out_folder, 
                          paste0("init_dbpm_nonspatial_", f, ".json")), 
                digits = 10)
+  
+  
+
+  ## Size spectrum plots ------------------------------------------------
+  # Transform density matrix to data frame to create plots
+  density_df <- dbpm_density_mat_to_df(init_results, dbpm_inputs$time) |> 
+    filter(decade >= 1960)
+  
+  # Create size spectrum plots
+  size_sp_plot <- plotsizespectrum(density_df, init_results$params, f, 
+                                   fish_param, mean_decade = T, nrow = 2)
+  
+  # Saving size spectrum plot for non-spatial runs
+  ggsave(file.path(dbpm_out_folder, 
+                   paste0("size_spectrum_two-groups_", f, ".png")), 
+         size_sp_plot, bg = "white")
+  
+
+  ########### Testing --------------
+  
+  
+  
+  
+  
   
   # Prepare fishing parameters for gridded DBPM 
   pred_initial <- rowMeans(init_results$predators)
@@ -314,13 +375,7 @@ for(f in fao){
                          paste0("dbpm_gridded_size_params_", f, ".json")),
                digits = 10)
 
-  # Defining folder to save non-spatial results
-  dbpm_out_folder <- file.path(out_folder, f, 
-                               paste0("fishing_runs", smoothed),
-                               "nonspatial")
-  if(!dir.exists(dbpm_out_folder)){
-    dir.create(dbpm_out_folder, recursive = T)
-  }
+  
 
   # Running non-spatial DBPM and saving results
   fout <- file.path(dbpm_out_folder, 
