@@ -1004,24 +1004,24 @@ LHSsearch <- function(num_iter = 1, search_volume = "estimated", seed = 1234,
                       forcing_file = NULL, gridded_forcing = NULL, 
                       best_param = T, best_val_folder = NULL){
   #Inputs:
-  # num_iter (integer) - Number of individual runs. Default is 1.
-  # search_volume (character or numeric) - Default is "estimated". It also takes
-  # a number that will be used as the area searched by predators for prey
-  # seed (positive integer) - Default is 1234. Value used to initialise random-
-  # number generation
-  # forcing_file (character) - Full path to forcing file. This must be 
+  # - num_iter (integer) - Number of individual runs. Default is 1.
+  # - search_volume (character or numeric) - Default is "estimated". It also 
+  # takes a number that will be used as the area searched by predators for prey
+  # - seed (positive integer) - Default is 1234. Value used to initialise 
+  # random-number generation
+  # - forcing_file (character) - Full path to forcing file. This must be 
   # non-gridded data
-  # gridded_forcing (character) - Full path to folder containing gridded forcing
-  # files
-  # best_param (boolean) - Default is True. If True, then only best fishing
-  # parameters (i.e., lowest RME) is returned. If False, all fishing parameters
+  # - gridded_forcing (character) - Full path to folder containing gridded 
+  # forcing files
+  # - best_param (boolean) - Default is TRUE. If TRUE, then only best fishing
+  # parameters (i.e., lowest RME) is returned. If FALSE, all fishing parameters
   # tested are returned
-  # best_val_folder (character) - Optional. If provided, it must be the full
+  # - best_val_folder (character) - Optional. If provided, it must be the full
   # path to the folder where LHS search results will be saved
   #
   #Output:
-  # bestvals (data frame) - Contains the values for LHS parameters that resulted
-  # in the best performing model based on RMSE values
+  # - bestvals (data frame) - Contains the values for LHS parameters that 
+  # resulted in the best performing model based on RMSE values
   
   #Making function reproducible
   set.seed(seed)
