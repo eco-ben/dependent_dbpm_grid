@@ -371,33 +371,17 @@ for(f in fao){
   
   ## Size spectrum plots per group (predators and detritivores) ---------
   # Transform density matrix to data frame to create plots
-  density_df <- dbpm_density_mat_to_df(init_results, dbpm_inputs$time) |> 
-    filter(decade >= 1960)
+  density_df <- dbpm_density_mat_to_df(init_results, dbpm_inputs$time)
   
   # Create size spectrum plots
   size_sp_plot <- plotsizespectrum(density_df, init_results$params, f, 
                                    fishing_params = fish_param, mean_decade = T,
-                                   combined = F, nrow = 2)
+                                   nrow = 3)
   
   # Saving size spectrum plot for non-spatial runs
-  ggsave(file.path(dbpm_out_folder, 
-                   paste0("size_spectrum_two-groups_", f, ".png")), 
+  ggsave(file.path(dbpm_out_folder, paste0("size_spectrum_", f, ".png")), 
          size_sp_plot, bg = "white")
   
-  
-
-  ## Combined size spectrum plots ----------------------------------------
-  # Create size spectrum plots
-  size_sp_plot_all <- plotsizespectrum(density_df, init_results$params, f, 
-                                       fishing_params = fish_param, 
-                                       mean_decade = T, combined = T)
-  
-  # Saving size spectrum plot for non-spatial runs
-  ggsave(file.path(dbpm_out_folder, 
-                   paste0("size_spectrum_combined_", f, ".png")), 
-         size_sp_plot_all, bg = "white")
-  
-
 
   ## Combined growth rate plots -------------------------------------------
   # Getting relevant size bins to be used in plots
