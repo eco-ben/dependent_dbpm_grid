@@ -371,7 +371,7 @@ for(f in fao){
   
   ## Size spectrum plots per group (predators and detritivores) ---------
   # Transform density matrix to data frame to create plots
-  density_df <- dbpm_density_mat_to_df(init_results, dbpm_inputs$time)
+  density_df <- dbpm_output_mat_to_df(init_results, dbpm_inputs$time, "density")
   
   # Create size spectrum plots
   size_sp_plot <- plotsizespectrum(density_df, init_results$params, f, 
@@ -383,49 +383,21 @@ for(f in fao){
          size_sp_plot, bg = "white")
   
 
-  ## Combined growth rate plots -------------------------------------------
-  # Getting relevant size bins to be used in plots
-  size_bins <- params$log10_size_bins[
-    params$ind_min_pred_size:params$numb_size_bins]
+  ## Creating growth rate plots -------------------------------------------
+  dates_model <- c(min(dbpm_inputs$time)%m-% months(1), dbpm_inputs$time)
+  growth_df <- dbpm_output_mat_to_df(init_results, dates_model, "growth") |> 
+    # Excluding growth value for first time step as it is used for model
+    # initialisation only
+    filter(time >= min(as_date(dbpm_inputs$time))) 
   
-  # Adding growth rates for predators and detritivores and excluding first 
-  # column as it is used for initialisation only
-  tot_growth <- as.data.frame((init_results$growth_det+
-                                 init_results$growth_int_pred), 
-                              row.names = params$log10_size_bins)[,-1]
-  # Adding timesteps as column names
-  colnames(tot_growth) <- dbpm_inputs$time
-  
-  # Reorganise data before it can be used in plots
-  tot_growth <- tot_growth |>
-    rownames_to_column("size_class") |> 
-    pivot_longer(!size_class, names_to = "time", values_to = "growth_rate") |> 
-    mutate(time = as_date(time), decade = ((year(time)-1) %/% 10)*10,
-           size_class = as.numeric(size_class), .before = growth_rate) |> 
-    filter(size_class %in% size_bins) |> 
-    filter(decade >= 1960) |> 
-    group_by(decade, size_class) |> 
-    summarise(mean_growth = mean(growth_rate, na.rm = T)) 
   
   # Create growth rate plot
-  growth_plot_all <- tot_growth |> 
-    ggplot(aes(size_class, mean_growth))+
-    geom_line()+
-    scale_y_continuous(trans = "log10", name = "Relative growth rate per year")+
-    labs(x = expression("" *log[10] ~ "body mass (g)"),
-         title = paste0(
-           unique(dbpm_inputs$region),
-           ": Mean growth rate per decade\n(detritivores+predators)"))+
-    facet_wrap(~decade)+
-    theme_bw()+
-    theme(panel.grid.minor = element_blank(), 
-          plot.title = element_text(hjust = 0.5, face = "bold"))
-  
+  growth_plot <- plot_growth_rate(growth_df, init_results$params, f, 
+                                      fishing_params = fish_param)
   
   # Saving size spectrum plot for non-spatial runs
-  ggsave(file.path(dbpm_out_folder, 
-                   paste0("growth_rates_combined_", f, ".png")), 
-         growth_plot_all, bg = "white")
+  ggsave(file.path(dbpm_out_folder, paste0("growth_rates_", f, ".png")), 
+         growth_plot, bg = "white")
   
   
   ## Prepare fishing parameters for gridded DBPM ---------------------------

@@ -1126,11 +1126,15 @@ corr_calib_plots <- function(fishing_params, dbpm_inputs,
 
 
 # Extracting density data from DBPM calibration (non-spatial) runs ----
-dbpm_density_mat_to_df <- function(dbpm_outputs, dbpm_temporal_range){
+dbpm_output_mat_to_df <- function(dbpm_outputs, dbpm_temporal_range, 
+                                   output_var){
   #Inputs:
   # dbpm_outputs (named list) - Output from `run_model` function
   # dbpm_temporal_range (date vector) - Vector containing dates for each time
   # step included in the DBPM run. 
+  # output_var (character) - Choices: 'density' or 'growth'. The first choice
+  # returns density values for detritivores, predators and detritus. The second
+  # returns growth rate values for detritivores and predators
   #
   #Output:
   # bio_data (data frame) Contains predator, detritivore and detritus density
@@ -1141,8 +1145,17 @@ dbpm_density_mat_to_df <- function(dbpm_outputs, dbpm_temporal_range){
   # Get size bins from DBPM outputs
   size_bins <- dbpm_outputs$params$log10_size_bins
   
+  if(output_var == "density"){
+    pred_var <- "predators"
+    det_var <- "detritivores"
+    detritus_var <- "detritus"
+  }else if(output_var == "growth"){
+    pred_var <- "growth_int_pred"
+    det_var <- "growth_det"
+  }
+    
   # Prepare predator data
-  pred <- as.data.frame(dbpm_outputs$predators, row.names = size_bins)
+  pred <- as.data.frame(dbpm_outputs[pred_var], row.names = size_bins)
   # Add timestamps
   colnames(pred) <- dbpm_temporal_range
   # Reorganise data
@@ -1151,7 +1164,7 @@ dbpm_density_mat_to_df <- function(dbpm_outputs, dbpm_temporal_range){
     pivot_longer(!size_class, names_to = "time", values_to = "predators")
   
   # Prepare detritivore data
-  detrit <- as.data.frame(dbpm_outputs$detritivores, row.names = size_bins)
+  detrit <- as.data.frame(dbpm_outputs[det_var], row.names = size_bins)
   # Add timestamps
   colnames(detrit) <- dbpm_temporal_range
   # Reorganise data
@@ -1159,16 +1172,21 @@ dbpm_density_mat_to_df <- function(dbpm_outputs, dbpm_temporal_range){
     rownames_to_column("size_class") |> 
     pivot_longer(!size_class, names_to = "time", values_to = "detritivores")
   
-  # Prepare detritus data
-  detritus <- data.frame(detritus = dbpm_outputs$detritus,
-                         row.names = as.character(dbpm_temporal_range)) |> 
-    rownames_to_column("time")
-  
   #Creating a single data frame with density outputs for all groups
   bio_data <- pred |> 
-    full_join(detrit, by = c("size_class", "time")) |> 
-    full_join(detritus, by = "time") |> 
-    # Add column classifying estimates per decade 
+    full_join(detrit, by = c("size_class", "time"))
+  
+  if(output_var == "density"){
+    # Prepare detritus data
+    detritus <- data.frame(detritus = dbpm_outputs[detritus_var],
+                           row.names = as.character(dbpm_temporal_range)) |> 
+      rownames_to_column("time")
+    bio_data <- bio_data |> 
+    full_join(detritus, by = "time") 
+  }
+  
+  # Add column classifying estimates per decade 
+  bio_data <- bio_data |> 
     mutate(time = as_date(time), decade = ((year(time)-1) %/% 10)*10,
            size_class = as.numeric(size_class), .before = predators) |> 
     relocate(size_class, .before = predators)
@@ -1272,3 +1290,64 @@ plotsizespectrum <- function(density_df, params, region, fishing_params = NULL,
     return(p1)
   })
 }
+
+
+# Growth rate plots ----
+plot_growth_rate <- function(growth_df, params, region, fishing_params = NULL){
+  #Inputs:
+  # - growth_df (data frame) - Output from the `dbpm_density_mat_to_df` 
+  # function
+  # - params (named list) - Containing DBPM parameters produced by the 
+  # `run_model` function
+  # - region (character) - Name of region being plotted
+  # - fishing_params (data frame) - Default is NULL. If provided, data frame 
+  # should include fishing parameters used to initialise model
+  #
+  #Output:
+  # Growth rate plot is returned
+  #
+  with(params, {
+    
+    # Prepare data for plotting - Ensure only data for fished classes is
+    # included in plots
+    plot_data <- growth_df |> 
+      mutate(size_class = 10**size_class) |> 
+      filter(size_class >= 0.1 & size_class <= 10**5) |> 
+      rowwise() |> 
+      mutate(mean_growth = mean(c(predators, detritivores), na.rm = T)) |> 
+      ungroup() |> 
+      group_by(decade, size_class) |> 
+      summarise(across(c(predators, detritivores, mean_growth), 
+                       ~ mean(.x, na.rm = T))) |> 
+      ungroup() |>
+      pivot_longer(c(predators, detritivores, mean_growth), names_to = "group", 
+                   values_to = "growth")
+    
+    # Create size spectrum plot
+    p1 <- plot_data |> 
+      ggplot(aes(size_class, growth, colour = decade, group = decade))+
+      geom_line()+
+      scale_color_gradient(low = "#ffffcc", high = "#800026")+
+      scale_y_continuous(trans = "log10", 
+                         name = "Relative growth rate per year")+
+      scale_x_continuous(trans = "log10", name = "Body mass (g)")+
+      labs(title = paste0(unique(dbpm_inputs$region),
+                          ": Mean growth rate per decade"),
+           caption = paste0("Pelagic preference: ", 
+                            round(params$pref_pelagic, 3),
+                            "\nBenthic preference: ", 
+                            round(params$pref_benthos, 3)))+
+      facet_grid(~group, scales = "free")+
+      theme(panel.grid.minor = element_blank(), 
+            plot.title = element_text(hjust = 0.5, face = "bold"), 
+            panel.background = element_rect(fill = "#737373"))
+    
+    if(!is.null(fishing_params)){
+      p1 <- plot_grid(p1, grid.arrange(tableGrob(fishing_params, rows = NULL)),
+                      nrow = 2, rel_heights = c(1, 0.1))
+    }
+    
+    return(p1)
+  })
+}
+
