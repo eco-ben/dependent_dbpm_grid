@@ -17,7 +17,7 @@ if __name__ == '__main__':
     client = Client(threads_per_worker = 1, memory_limit = 0)
 
     # Defining folder where masks with all FAO regions are stored
-    mask_folder = '/g/data/vf71/shared_resources/fao_fishing_areas'
+    mask_folder = '/g/data/vf71/shared_resources/fao_lme_masks'
     
     # Define location of DBPM inputs
     base_dir = '/g/data/vf71/fishmip_inputs/ISIMIP3a/'
@@ -30,20 +30,20 @@ if __name__ == '__main__':
     
     # Choose whether smoothing of inputs will be performed by LOESS (smoothed) or
     # deseasoning data (deseasoned). Select None for no smoothing.
-    smoothing = 'deseasoned'
+    smoothing = None
     
     for res in resolutions:
         if res == '1deg':
             mask_all = xr.open_dataarray(
                 os.path.join(mask_folder,
-                             'gfdl-mom6-cobalt2_FAO_MajorAreas_60arcmin_global_fixed.nc'))
+                             'gfdl-mom6-cobalt2_fao-major_lme_60arcmin_global_fixed.nc'))
         elif res == '025deg':
             mask_all = xr.open_dataarray(
                 os.path.join(mask_folder, 
-                             'gfdl-mom6-cobalt2_FAO_MajorAreas_15arcmin_global_fixed.nc'))
+                             'gfdl-mom6-cobalt2_fao-major_lme_15arcmin_global_fixed.nc'))
         
         # Getting region codes included in mask
-        fao_code = np.unique(mask_all.values[np.isfinite(mask_all.values)]).astype(int)
+        fao_lme_id = np.unique(mask_all.values[np.isfinite(mask_all.values)]).astype(int)
         
         #Define GFDL folder
         if smoothing is None:
@@ -57,11 +57,11 @@ if __name__ == '__main__':
             out_name = f'gridded-{smoothing}'
 
         #List all files to be extracted
-        for fao in fao_code:
-            gfdl_out = os.path.join(base_dir, 'fao_inputs', f'fao-{fao}', 
+        for aoi in fao_lme_id:
+            gfdl_out = os.path.join(base_dir, 'fao_lme_inputs', f'fao_lme-{aoi}', 
                                     out_name, res)
             os.makedirs(gfdl_out, exist_ok = True)
-            mask = xr.where(mask_all == fao, 1, np.nan)
+            mask = xr.where(mask_all == aoi, 1, np.nan)
             for dv in vars_int:
                 #Ignoring files not needed
                 file_dv = [f for f in file_list if f'_{dv}_' in f]
@@ -69,10 +69,10 @@ if __name__ == '__main__':
                 #Extracting data for FAO area
                 for f in file_dv:
                     #Create file path to save outputs
-                    f_out = os.path.basename(f).replace('global', f'fao-{fao}')
+                    f_out = os.path.basename(f).replace('global', f'fao_lme-{aoi}')
                     f_out = os.path.join(gfdl_out, f_out)
                     #Apply function
-                    if fao in [18, 61, 71, 81, 88]:
+                    if aoi in [1, 54, 65, 161, 171, 181, 188]:
                         cross_dateline = True
                     else:
                         cross_dateline = False
