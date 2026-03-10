@@ -25,14 +25,14 @@ else:
     smoothing = ''
     weighted_fn = ''
 
-# Apply data processing workflow to all regions and resolutions
+# Apply data processing workflow to all regions - High resolution only
 for aoi in fao_lme_code:
     gridded_folder = os.path.join(base_dir, aoi, f'gridded{smoothing}', res)
     
     #Extracting data for FAO-LME area
     #Load area of grid cell to be used as weights
-    weights = xr.open_zarr(glob(os.path.join(gridded_folder,
-                                             '*area*'))[0]).cellareao
+    weights = xr.open_zarr(
+        glob(os.path.join(gridded_folder, '*area*'))[0]).cellareao
     #Areas outside LME need to be given a value of 0
     weights = weights.fillna(0)
     
