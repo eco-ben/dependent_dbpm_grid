@@ -64,7 +64,7 @@ for aoi in fao_lme_code:
     
     weighted_ctrl_df.to_parquet(
         os.path.join(gfdl_out,
-                     f'ctrlclim_dbpm_clim-inputs{weighted_fn}_{fao}_1961-2010.parquet'), 
+                     f'ctrlclim_dbpm_clim-inputs{weighted_fn}_{aoi}_1961-2010.parquet'), 
         index = False)
     
     weighted_spinup_df.to_parquet(
