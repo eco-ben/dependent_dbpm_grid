@@ -376,7 +376,7 @@ def getExportRatio(folder_gridded_data, gfdl_exp):
     plarge = (lphy/ptotal)
     psmall = (sphy/ptotal)
 
-    #Calculate export ration
+    #Calculate export ratio
     er = (np.exp(-0.032*tos)*((0.14*psmall)+(0.74*(plarge)))+
           (0.0228*(plarge)*(depth*0.004)))/(1+(depth*0.004))
     #If values are negative, assign a value of 0
