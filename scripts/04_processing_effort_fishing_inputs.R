@@ -92,7 +92,9 @@ for(f in fao_lme){
     str_subset(paste0("inputs", fn_search, "_fao_lme")) |> 
     map(\(x) read_parquet(x)) |> 
     bind_rows() |> 
+    clean_names() |> 
     arrange(time) |> 
+    mutate(time = as_date(time)) |> 
     rename(depth = depth_m, area_m2 = tot_area_m2)
   
   # Getting the mean depth and area of the region of interest
