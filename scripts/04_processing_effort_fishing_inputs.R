@@ -226,9 +226,11 @@ for(f in fao_lme){
   }
 
   ## Saving catch and effort, and inputs data -------------------------------
+  fout_forcing <- paste0("dbpm_clim-fish-inputs", fn_search, "_", f, "_", 
+                         min(forcing_file$year), "-", max(forcing_file$year),
+                         ".parquet")
+  
   forcing_file |> 
-    write_parquet(file.path(forcing_folder, 
-                            paste0("dbpm_clim-fish-inputs", fn_search, "_", f, 
-                                   "_1841-2010.parquet")))
+    write_parquet(file.path(forcing_folder, fout_forcing))
 }
 
