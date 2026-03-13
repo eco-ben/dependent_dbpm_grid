@@ -1022,7 +1022,8 @@ getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F,
 }
 
 #Carry out LHS param search ----
-LHSsearch <- function(num_iter = 1, search_volume = "estimated", seed = 1234,
+LHSsearch <- function(num_iter = 1, seed = 1234, search_volume = "estimated",
+                      min_fish_size_pred = NULL, min_fish_size_detrit = NULL, 
                       forcing_file = NULL, gridded_forcing = NULL, 
                       best_param = T, best_val_folder = NULL, ...){
   #Inputs:
@@ -1059,6 +1060,17 @@ LHSsearch <- function(num_iter = 1, search_volume = "estimated", seed = 1234,
   fishing_params <- fishing_params |> 
     mutate(fminx_u = fminx_u*2, 
            fminx_v = fminx_v*2)
+  
+  # If minimum harvested size for predators is provided, replace in data frame
+  if(!is.null(min_fish_size_pred)){
+    fishing_params$fminx_u <- min_fish_size_pred
+  }
+  
+  # If minimum harvested size for detritivores is provided, replace in data 
+  # frame
+  if(!is.null(min_fish_size_detrit)){
+    fishing_params$fminx_v <- min_fish_size_detrit
+  }
   
   if(is.numeric(search_volume)){
     fishing_params <- fishing_params |> 

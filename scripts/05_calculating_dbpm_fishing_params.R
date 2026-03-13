@@ -39,6 +39,11 @@ if(!is.null(smoothed)){
 }
 
 
+# Loading size structure for catches
+ss_catches <- read_csv_arrow(
+  file.path("/g/data/vf71/fishmip_inputs/ISIMIP3a/effort_catch_data", 
+            "summary_size_spectrum_catches_fao-lme.csv"))
+
 # Initial calibration loop ------------------------------------------------
 for(f in fao_lme){
   # Load inputs (weighted means) - We will only use 1 deg inputs to calculate 
@@ -60,8 +65,11 @@ for(f in fao_lme){
            expc_bot_g_m2 = expc_bot*12.0107*time_conversion)
   
   
+  reg_code <- str_extract(f, "-([0-9]+)", group = 1)
   
-  
+  min_fish_size <- ss_catches |> 
+    filter(area == reg_code & year == min(year)) |> 
+    pull(min_weight_class)
   
   ## Searching best fishing parameters values for area of interest ----------
   #Path to folder where results will be stored
@@ -69,12 +77,12 @@ for(f in fao_lme){
                                 paste0("best_fish_params", smoothed))
  
   if(!params_ready & fishing){
-    params_calibration <- LHSsearch(num_iter = no_iter,
-                                    search_volume = search_volume, 
-                                    forcing_file = dbpm_inputs,
-                                    gridded_forcing = NULL,
-                                    best_val_folder = results_folder,
-                                    best_param = F) |>
+    params_calibration <- LHSsearch(
+      num_iter = no_iter, search_volume = search_volume,  
+      min_fish_size_pred = min_fish_size, min_fish_size_detrit = min_fish_size, 
+      forcing_file = dbpm_inputs, gridded_forcing = NULL, 
+      best_val_folder = results_folder, best_param = F, 
+      detritus_initial = dbpm_inputs$expc_bot_g_m2[1]) |>
       rowid_to_column("id")
   }else{
     params_calibration <- read_parquet(
