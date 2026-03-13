@@ -79,8 +79,7 @@ ss_catches_summ <- ss_catches |>
             max_weight_class = max(log10mid_wt, na.rm = T), .groups = "drop") |> 
   mutate(region = case_when(area < 100 ~ paste0("LME ", area),
                             .default = paste0("FAO ", area)), .after = year) |> 
-  rename(region_name = corrected_name) |> 
-  select(!area)
+  rename(region_name = corrected_name) 
 
 # Saving summarised data
 ss_catches_summ |> 
