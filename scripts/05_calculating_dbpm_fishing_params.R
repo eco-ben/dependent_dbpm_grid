@@ -10,9 +10,9 @@ library(tibble)
 
 
 # Loading DBPM climate and fishing inputs ---------------------------------
-base_folder <- "/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_inputs"
-fao <- list.dirs(base_folder, recursive = F, full.names = F) |> 
-  str_subset(pattern = "fao-")
+base_folder <- "/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_lme_inputs"
+fao_lme <- list.dirs(base_folder, recursive = F, full.names = F) |> 
+  str_subset(pattern = "fao_lme-")
 
 # Define search volume
 search_volume <- 0.5
@@ -40,13 +40,28 @@ if(!is.null(smoothed)){
 
 
 # Initial calibration loop ------------------------------------------------
-for(f in fao){
+for(f in fao_lme){
   # Load inputs (weighted means) - We will only use 1 deg inputs to calculate 
   # fishing parameters
-  dbpm_inputs <- file.path(base_folder, f, paste0("monthly_weighted", smoothed),
-                           "025deg", paste0("dbpm_clim-fish-inputs", fn_search,
-                                          "_", f, "_1841-2010.parquet")) |> 
-    read_parquet()
+  dbpm_inputs <- read_parquet(list.files(
+    file.path(base_folder, f, paste0("monthly_weighted", smoothed)), 
+    paste0("dbpm_clim-fish-inputs", fn_search, "_", f), full.names = T))
+  
+  
+  
+  # Calculate number of days between dates to convert expc_bot from seconds to
+  # month
+  dates <- c(dbpm_inputs$time, max(dbpm_inputs$time)+months(1))
+  n_days <- as.numeric(difftime(dates, lag(dates)))
+  # Biomass density of detritus g.m-2 (convert expc_bot from mol m-2 s-1)
+  dbpm_inputs <- dbpm_inputs |> 
+    mutate(n_days = n_days[!is.na(n_days)],
+           time_conversion = 60*60*24*n_days,
+           expc_bot_g_m2 = expc_bot*12.0107*time_conversion)
+  
+  
+  
+  
   
   ## Searching best fishing parameters values for area of interest ----------
   #Path to folder where results will be stored
@@ -191,8 +206,8 @@ no_iter <- 2000
 
 for(f in bad_params){
   dbpm_inputs <- file.path(base_folder, f, paste0("monthly_weighted", smoothed),
-                           "025deg", paste0("dbpm_clim-fish-inputs", fn_search,
-                                            "_", f, "_1841-2010.parquet")) |> 
+                           paste0("dbpm_clim-fish-inputs", fn_search, "_", f, 
+                                  "_1841-2010.parquet")) |> 
     read_parquet()
   
   ## Searching best fishing parameters values for area of interest ----------
@@ -293,8 +308,8 @@ for(f in fao){
   }
   
   dbpm_inputs <- file.path(base_folder, f, paste0("monthly_weighted", smoothed),
-                           "025deg", paste0("dbpm_clim-fish-inputs", fn_search,
-                                            "_", f, "_1841-2010.parquet")) |> 
+                           paste0("dbpm_clim-fish-inputs", fn_search, "_", f, 
+                                  "_1841-2010.parquet")) |> 
     read_parquet()
   
   if(fishing){
@@ -393,7 +408,7 @@ for(f in fao){
   
   # Create growth rate plot
   growth_plot <- plot_growth_rate(growth_df, init_results$params, f, 
-                                      fishing_params = fish_param)
+                                  fishing_params = fish_param)
   
   # Saving size spectrum plot for non-spatial runs
   ggsave(file.path(dbpm_out_folder, paste0("growth_rates_", f, ".png")), 
@@ -406,11 +421,9 @@ for(f in fao){
   detritus_initial <- mean(init_results$detritus)
   
   gridded_params <- sizeparam(dbpm_inputs, fish_param, xmin_consumer_u = -3, 
-                              xmin_consumer_v = -3, use_init = T, 
-                              pred_initial = pred_initial, 
+                              xmin_consumer_v = -3, pred_initial = pred_initial, 
                               detritivore_initial = detritivore_initial, 
-                              detritus_initial = detritus_initial,
-                              gridded = T)
+                              detritus_initial = detritus_initial, gridded = T)
   
   #Save for use in gridded DBPM (step 05)
   gridded_params |> 
@@ -423,9 +436,40 @@ for(f in fao){
   fout <- file.path(dbpm_out_folder, 
                     paste0("dbpm_nonspatial_", f, "_1841-2010.parquet"))
 
-  run_model(fish_param, dbpm_inputs, xmin_consumer_u = -3, 
-            xmin_consumer_v = -3) |> 
+  calib_run <- run_model(fish_param, dbpm_inputs, xmin_consumer_u = -3, 
+                         xmin_consumer_v = -3, include_plankton = T) 
+  
+  # Save results
+  calib_run |> 
     write_parquet(fout)
+  
+  # Create plots of biomass (predators, detritivores and detritus)
+  biomass_data <- calib_run |>
+    select(year, ends_with("biomass"), total_detritus, expc_bot_g_m2) |>
+    rename(`expc-bot_detritus` = expc_bot_g_m2) |> 
+    group_by(year) |> 
+    summarise(across(starts_with(c("total", "expc")), ~ mean(.x, na.rm = T)))
+  
+  bio_plot <- biomass_data |> 
+    pivot_longer(!year, names_to = "group", values_to = "values", 
+                 names_prefix = "total_") |> 
+    separate_wider_delim(group, delim = "_", names = c("group", "type"), 
+                         too_few = "align_start") |> 
+    replace_na(list(type = "detritus")) |> 
+    ggplot(aes(x = year, y = values, color = group))+
+    geom_line()+
+    geom_point()+
+    facet_grid(type~., scales = "free")+
+    labs(title = 
+           paste0(str_replace(str_to_upper(f), "-", " "), 
+                  ": Predator and detritivore biomass, and detritus density"))+
+    theme_bw()+
+    theme(axis.title.x = element_blank())
+  
+  ggsave(file.path(dbpm_out_folder, 
+                   paste0("pred-detritus-bio_detritus_", f, ".png")), bio_plot,
+         bg = "white")
+  
 }
 
     
