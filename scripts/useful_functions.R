@@ -22,10 +22,9 @@ library(gridExtra)
 # Getting DBPM model parameters ready -------------------------------------
 sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12, 
                       xmin_consumer_u = -7, xmin_consumer_v = -7, xmax = 6, 
-                      Ngrid = NA, use_init = FALSE, 
-                      pred_initial = NA, detritivore_initial = NA, 
-                      detritus_initial = NA, equilibrium = FALSE,
-                      gridded = FALSE){
+                      Ngrid = NA, pred_initial = NULL, 
+                      detritivore_initial = NULL, detritus_initial = NULL, 
+                      equilibrium = FALSE, gridded = FALSE){
   
   #Inputs:
   # - dbpm_inputs (data frame) Containing climate and fishing data needed as 
@@ -42,15 +41,12 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
   #   dynamics benthic detritivores
   # - xmax (numeric). Default value is 6. Maximum log10 body size of predators
   # - Ngrid (numeric) Optional. Number of grid cells.
-  # - use_init (boolean). Default value is FALSE. If set to TRUE, the 
-  #   initialisation values for predators (U_initial), detritivores (V.initial) 
-  #   and detritus (W.initial) will be used
-  # - pred_initial (numeric). Optional. Default is NA. Initialisation value for
-  #   predators. If provided, 'use_init' must be set to TRUE
-  # - detritivore_initial (numeric). Optional. Default is NA. Initialisation 
-  #   value for detritivores. If provided, 'use_init' must be set to TRUE
-  # - detritus_initial (numeric). Optional. Default is NA. Initialisation 
-  #   value for detritus If provided, 'use_init' must be set to TRUE
+  # - pred_initial (numeric). Optional. Default is NULL. Initialisation values 
+  #   for predator biomass. 
+  # - detritivore_initial (numeric). Optional. Default is NULL. Initialisation 
+  #   values for detritivore biomass. 
+  # - detritus_initial (numeric). Optional. Default is NULL. Initialisation 
+  #   value for detritus biomass
   # - equilibrium (boolean). Default value is FALSE.
   # - gridded(boolean). Default value is FALSE. If set to TRUE, it will provide
   #   params for non-gridded model run.
@@ -97,7 +93,6 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
   param$n_years <- length(unique(dbpm_inputs$year))
   
   # discretisation of year(delta.t)
-  # param$timesteps_years <- (1/tstepspryr)
   param$timesteps_years <- dbpm_inputs |> 
     group_by(year) |> 
     count() |> 
@@ -106,10 +101,9 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
     pull(ts)
   
   # number of time bins (Neq)
-  # param$numb_time_steps <- param$n_years*tstepspryr
   param$numb_time_steps <- nrow(dbpm_inputs)
   
-  # get rescaled effort
+  # get re-scaled effort
   param$effort <- dbpm_inputs$nom_active_area_m2_relative
   
   # fishing parameters 
@@ -249,29 +243,38 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
   #short hand for matrix indexing (idx)
   param$idx <- 2:param$numb_size_bins
   
-  if(use_init){
-    #(U.init)
+  
+  # For predators, detritivores and detritus biomass values
+  # If gridded is selected and no initial values for predators or detritivores
+  # are provided, then the parameters below are not included in the output.
+  # These will need to be calculated from gridded files
+  
+  #(U.init)
+  if(!is.null(pred_initial)){
     param$init_pred <- pred_initial
-    #(V.init)
+  }else if(is.null(pred_initial) & !gridded){
+    # (phyto+zoo)plankton + pelagic predator size spectrum (U.init)
+    param$init_pred <- 10^param$int_phy_zoo[1]*
+      10^(param$slope_phy_zoo[1]*param$log10_size_bins)
+  }
+  
+  #(V.init)
+  if(!is.null(detritivore_initial)){
     param$init_detritivores <- detritivore_initial
-    #(W.init)
+  }else if(is.null(detritivore_initial) & !gridded){
+    # set initial detritivore spectrum (V.init)
+    param$init_detritivores <- param$sinking_rate[1]*10^param$int_phy_zoo[1]* 
+      10^(param$slope_phy_zoo[1]*param$log10_size_bins)
+  }
+  
+  #(W.init)
+  if(!is.null(detritus_initial)){
     param$init_detritus <- detritus_initial
-  }else{
+  }else if(is.null(detritus_initial) & !gridded){
     # arbitrary initial value for detritus (W.init)
     param$init_detritus <- 0.00001
-    # If gridded is selected and no initial values for predators or detritivores
-    # area provided, then the parameters below are not included in the output.
-    # These will need to calculated from gridded files
-    if(!gridded){
-      # set initial detritivore spectrum (V.init)
-      param$init_detritivores <- param$sinking_rate[1]*10^param$int_phy_zoo[1]* 
-        10^(param$slope_phy_zoo[1]*param$log10_size_bins)
-      
-      # (phyto+zoo)plankton + pelagic predator size spectrum (U.init)
-      param$init_pred <- 10^param$int_phy_zoo[1]*
-        10^(param$slope_phy_zoo[1]*param$log10_size_bins)
-    }
   }
+  
   
   param$equilibrium <- equilibrium
   
@@ -390,7 +393,16 @@ sizemodel <- function(params, temp_effect = T, use_init = F){
     detritivores <- predators <- array(0, c(numb_size_bins, numb_time_steps+1))
     
     #vector to hold detritus biomass density (g.m-2) (W)
-    detritus <- array(0, numb_time_steps+1)
+    if(length(init_detritus) == numb_time_steps){
+      detritus <- array(c(init_detritus[1], init_detritus), numb_time_steps+1)
+    }else if(length(init_detritus) == 1){
+      detritus <- array(c(init_detritus, rep(0, numb_time_steps)),
+                        numb_time_steps+1)
+    }else{
+      stop(paste0("'Detritus' parameter has the wrong number of values. Its ",
+                  "length should be either 1 or equal to the total number of ", 
+                  "time steps in the model."))
+    }
     
     #matrix for keeping track of growth (GG_v, GG_u) and reproduction (R_v, R_u) 
     #from ingested food:
@@ -451,8 +463,7 @@ sizemodel <- function(params, temp_effect = T, use_init = F){
     # set initial detritivore spectrum (V)
     detritivores[ind_min_detritivore_size:120, 1] <- 
       init_detritivores[ind_min_detritivore_size:120]
-    # set initial detritus biomass density (g.m^-3) (W)
-    detritus[1] <- init_detritus
+    
     
     if(use_init){
       # set initial consumer size spectrum from previous run
@@ -630,29 +641,30 @@ sizemodel <- function(params, temp_effect = T, use_init = F){
       # top match total mortality calculation above
       # Senescense mortality removed altoghether from detritus calculations
       # after discussion with Julia on 2025-08-15
-      if(detritus_coupling){
-        # pelagic spectrum inputs (sinking dead bodies and faeces) - export 
-        # ratio used for "sinking rate" + benthic spectrum inputs (dead stuff
-        # already on/in seafloor)
-        # removing temperature effects from senescence mortality to match
-        # total mortality calculations above. Changed on 2025-08-14
-        input_w <- (sinking_rate[i]* 
-                      (sum(defbypred[ind_min_pred_size:numb_size_bins]*
-                             log_size_increase)+
-                         sum(pel_tempeffect[i]*other_mort_pred*predators[, i]*
+      if(length(init_detritus) == 1){
+        if(detritus_coupling){
+          # pelagic spectrum inputs (sinking dead bodies and faeces) - export 
+          # ratio used for "sinking rate" + benthic spectrum inputs (dead stuff
+          # already on/in seafloor)
+          # removing temperature effects from senescence mortality to match
+          # total mortality calculations above. Changed on 2025-08-14
+          input_w <- (sinking_rate[i]* 
+                        (sum(defbypred[ind_min_pred_size:numb_size_bins]*
+                               log_size_increase)+
+                           sum(pel_tempeffect[i]*other_mort_pred*predators[, i]*
+                                 size_bins_vals*log_size_increase)+
+                           sum(pel_tempeffect[i]*senes_mort_pred*predators[, i]*
+                                 size_bins_vals*log_size_increase))+
+                        (sum(ben_tempeffect[i]*other_mort_det*detritivores[, i]*
                                size_bins_vals*log_size_increase)+
-                         sum(pel_tempeffect[i]*senes_mort_pred*predators[, i]*
-                               size_bins_vals*log_size_increase))+
-                      (sum(ben_tempeffect[i]*other_mort_det*detritivores[, i]*
-                             size_bins_vals*log_size_increase)+
-                         sum(ben_tempeffect[i]*senes_mort_det*
-                               detritivores[, i]*size_bins_vals*
-                               log_size_increase)))
-      }else{
-        input_w <- sum(ben_tempeffect[i]*other_mort_det*detritivores[, i]*
-                         size_bins_vals*log_size_increase)+
-          sum(senes_mort_det*detritivores[, i]*size_bins_vals*log_size_increase)
-      }
+                           sum(ben_tempeffect[i]*senes_mort_det*
+                                 detritivores[, i]*size_bins_vals*
+                                 log_size_increase)))
+        }else{
+          input_w <- sum(ben_tempeffect[i]*other_mort_det*detritivores[, i]*
+                           size_bins_vals*log_size_increase)+
+            sum(senes_mort_det*detritivores[, i]*size_bins_vals*log_size_increase)
+        }
         
         # get burial rate from Dunne et al. 2007 equation 3
         burial <- input_w*(0.013+0.53*input_w^2/(7+input_w)^2)
@@ -665,6 +677,7 @@ sizemodel <- function(params, temp_effect = T, use_init = F){
           
         #biomass density of detritus g.m-2
         detritus[i+1] <- detritus[i]+dW*timesteps_years
+      }
 
       # Pelagic Predator Density (nos.m-2)- solve for time + timesteps_years 
       # using implicit time Euler upwind finite difference (help from Ken 
@@ -784,8 +797,9 @@ sizemodel <- function(params, temp_effect = T, use_init = F){
 
 
 # Running model with time series ----
-run_model <- function(fishing_params, dbpm_inputs, withinput = T, 
-                      xmin_consumer_u = -3, xmin_consumer_v = -3){
+run_model <- function(fishing_params, dbpm_inputs, withinput = TRUE, 
+                      xmin_consumer_u = -3, xmin_consumer_v = -3, 
+                      include_plankton = FALSE, ...){
   #Inputs:
   # fishing_params (list) - Fishing parameters produced by the `sizeparam` 
   # function
@@ -800,6 +814,7 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = T,
   # in grams for detritivores This parameter represents the exponent using a 
   # base of 10. When using default value -3, this means the minimum size for 
   # detritivores is 10^(-3) or 0.001 g.
+  # '...' captures extra parameters for the `sizeparam` function
   #
   #Output:
   # If withinput set to TRUE:
@@ -809,7 +824,7 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = T,
   
   params <- sizeparam(dbpm_inputs, fishing_params, 
                       xmin_consumer_u = xmin_consumer_u, 
-                      xmin_consumer_v = xmin_consumer_v)
+                      xmin_consumer_v = xmin_consumer_v, ...)
   
   # run model through time
   # TO DO IN SIZEMODEL CODE: make fishing function like one in model template
@@ -848,6 +863,13 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = T,
     dbpm_inputs <- dbpm_inputs |>
       mutate(total_catch = total_pred_catch + total_detritivore_catch)
     
+    if(include_plankton){
+      lims_plank_bio <- 1:(params$ind_min_pred_size-1)
+      dbpm_inputs$total_plankton_biomass <- 
+        apply(result_set$predators[lims_plank_bio,]*params$log_size_increase*
+                size_bins[lims_plank_bio], 2, sum)
+    }
+    
     return(dbpm_inputs)
     
   }else{
@@ -859,7 +881,7 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = T,
 # Comparing observed and predicted fish biomass ----
 getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F, 
                      figure_folder = NULL, xmin_consumer_u = -3,
-                     xmin_consumer_v = -3){
+                     xmin_consumer_v = -3, ...){
   #Inputs:
   # fishing_params (data frame) - Contains fishing parameters
   # dbpm_inputs (data frame) - Climate and fishing forcing data
@@ -897,7 +919,7 @@ getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F,
   #Running model
   result <- run_model(fishing_params, dbpm_inputs, 
                       xmin_consumer_u = xmin_consumer_u, 
-                      xmin_consumer_v = xmin_consumer_v)
+                      xmin_consumer_v = xmin_consumer_v, ...)
 
   #Aggregate data by year (mean to conserve units)
   error_calc <- result |> 
@@ -1002,7 +1024,7 @@ getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F,
 #Carry out LHS param search ----
 LHSsearch <- function(num_iter = 1, search_volume = "estimated", seed = 1234,
                       forcing_file = NULL, gridded_forcing = NULL, 
-                      best_param = T, best_val_folder = NULL){
+                      best_param = T, best_val_folder = NULL, ...){
   #Inputs:
   # - num_iter (integer) - Number of individual runs. Default is 1.
   # - search_volume (character or numeric) - Default is "estimated". It also 
@@ -1059,7 +1081,8 @@ LHSsearch <- function(num_iter = 1, search_volume = "estimated", seed = 1234,
   no_cores <- round((detectCores()*.75), 0)
   fishing_params$rmse <- mclapply(1:nrow(fishing_params), 
                                   FUN = function(i) 
-                                    getError(fishing_params[i,], dbpm_inputs), 
+                                    getError(fishing_params[i,], dbpm_inputs,
+                                             ...), 
                                   mc.cores = no_cores) |> 
     unlist()
   
