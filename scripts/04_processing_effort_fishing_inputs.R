@@ -57,8 +57,37 @@ catch_watson |>
   write_csv_arrow(
     file.path(fishing_folder, "DKRZ_EffortFiles",
               "yearly_catch_fao-lme_isimip3a_histsoc_1869_2017.csv")) 
-  
-  
+
+
+# Processing size spectrum - catches --------------------------------------
+# Size spectra data from Reg (original file name: SizesinLMET2.csv")
+ss_catches <- read_csv_arrow(file.path(fishing_folder, "effort_catch_data", 
+                                       "size_spectrum_catches_fao-lme.csv")) |> 
+  clean_names()
+# Loading names of LMEs and FAO regions
+lme_names <- read_csv_arrow(file.path("/g/data/vf71/shared_resources", 
+                                      "fao_lme_masks/fao-major_lme_keys.csv"),
+                      col_select = c("fao_lme", "corrected_name"))
+
+# Finding maximum and minimum weight classes of catches (per year and AOI)
+# The 'Log10MidWt' column was selected based on the 'Plot Size Data 8.R' script 
+# from Reg that produces the figure of size spectrum plots for each region
+ss_catches_summ <- ss_catches |> 
+  left_join(lme_names, by = c("area"="fao_lme")) |> 
+  group_by(year, area, corrected_name) |> 
+  summarise(min_weight_class = min(log10mid_wt, na.rm = T),
+            max_weight_class = max(log10mid_wt, na.rm = T), .groups = "drop") |> 
+  mutate(region = case_when(area < 100 ~ paste0("LME ", area),
+                            .default = paste0("FAO ", area)), .after = year) |> 
+  rename(region_name = corrected_name) |> 
+  select(!area)
+
+# Saving summarised data
+ss_catches_summ |> 
+  write_csv_arrow(file.path(fishing_folder, "effort_catch_data", 
+                            "summary_size_spectrum_catches_fao-lme.csv"))
+
+
 # Define base variables ---------------------------------------------------
 base_folder <- "/g/data/vf71/fishmip_inputs/ISIMIP3a/fao_lme_inputs"
 fao_lme <- list.dirs(base_folder, recursive = F, full.names = F) |> 
