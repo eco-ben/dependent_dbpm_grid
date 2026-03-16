@@ -122,8 +122,10 @@ for(f in fao_lme){
     bind_rows() |> 
     clean_names() |> 
     arrange(time) |> 
-    mutate(time = as_date(time)) |> 
-    rename(depth = depth_m, area_m2 = tot_area_m2)
+    mutate(time = as_date(time),
+           depth = ifelse(is.na(depth_m), mean(depth_m, na.rm = T), depth_m)) |> 
+    rename(area_m2 = tot_area_m2) |> 
+    select(!depth_m)
   
   # Getting the mean depth and area of the region of interest
   depth_area <- clim_forcing_file |> 
