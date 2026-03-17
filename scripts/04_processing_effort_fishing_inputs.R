@@ -75,8 +75,8 @@ lme_names <- read_csv_arrow(file.path("/g/data/vf71/shared_resources",
 ss_catches_summ <- ss_catches |> 
   left_join(lme_names, by = c("area"="fao_lme")) |> 
   group_by(year, area, corrected_name) |> 
-  summarise(min_weight_class = min(log10mid_wt, na.rm = T),
-            max_weight_class = max(log10mid_wt, na.rm = T), .groups = "drop") |> 
+  summarise(min_fished_weight_class = min(log10mid_wt, na.rm = T),
+            max_fished_weight_class = max(log10mid_wt, na.rm = T), .groups = "drop") |> 
   mutate(region = case_when(area < 100 ~ paste0("LME ", area),
                             .default = paste0("FAO ", area)), .after = year) |> 
   rename(region_name = corrected_name) 
@@ -127,6 +127,24 @@ for(f in fao_lme){
     rename(area_m2 = tot_area_m2) |> 
     select(!depth_m)
   
+  # Calculate number of days between dates to convert expc_bot from seconds to
+  # yearly rate
+  dates <- c(clim_forcing_file$time, max(clim_forcing_file$time)+months(1))
+  n_days <- as.numeric(difftime(dates, lag(dates)))
+  
+  # Biomass density of detritus g.m-2 (convert expc_bot from mol m-2 s-1)
+  clim_forcing_file <- clim_forcing_file |> 
+    mutate(n_days = n_days[!is.na(n_days)]) |> 
+    # needs to be number of seconds per year
+    group_by(year) |> 
+    mutate(n_days = sum(n_days, na.rm = F)) |> 
+    ungroup() |> 
+    mutate(time_conversion = 60*60*24*n_days,
+           # Moles to grams of C to wet weight. From seconds to years
+           input_w = expc_bot*12.0107/0.0352*time_conversion, 
+           .after = expc_bot) |> 
+    select(!c(n_days,time_conversion))
+    
   # Getting the mean depth and area of the region of interest
   depth_area <- clim_forcing_file |> 
     distinct(depth, area_m2)
@@ -185,6 +203,13 @@ for(f in fao_lme){
     #Calculate total tonnes caught per year
     summarise(catch_tonnes_pauly = sum(tonnes, na.rm = T))
   
+  # Load minimum and maximum fish sizes harvested 
+  ss_catches_summ <- read_csv_arrow(
+    file.path(fishing_folder, "effort_catch_data", 
+              "summary_size_spectrum_catches_fao-lme.csv")) |> 
+    filter(area == fao_lme_id) |> 
+    select(!c(region, area))
+  
   catch_data <- catch_watson |> 
     full_join(catch_pauly, by = "year") |> 
     mutate(catch_pauly_tonnes_area_m2 = catch_tonnes_pauly/area_m2) |> 
@@ -196,15 +221,18 @@ for(f in fao_lme){
                                    catch_pauly_tonnes_area_m2, na.rm = T),
            max_catch_density = max(catch_tonnes_area_m2, 
                                    catch_pauly_tonnes_area_m2, na.rm = T)) |> 
-    select(!c(region, depth, area_m2))
-
+    select(!c(region, depth, area_m2)) |> 
+    full_join(ss_catches_summ, by = "year")
+    
   rm(catch_pauly, catch_watson)
 
   # Merging catch and effort data -------------------------------------------
   DBPM_effort_catch_input <- effort_data |> 
     full_join(catch_data, by = "year") |> 
     mutate(region = case_when(fao_lme_id < 100 ~ paste0("LME ", region),
-                              T ~ paste0("FAO ", region-100)))
+                              T ~ paste0("FAO ", region-100)),
+           region_name = unique(ss_catches_summ$region_name)) |> 
+    relocate(region_name, .after = region)
   
   #Saving summarised catch and effort data
   DBPM_effort_catch_input |> 
@@ -213,12 +241,13 @@ for(f in fao_lme){
                                    f, ".parquet")))
   
   #Removing individual data frames
-  rm(effort_data, catch_data)
+  rm(effort_data, catch_data, ss_catches_summ)
   
   #Joining with climate inputs
   forcing_file <- clim_forcing_file |> 
     select(!region) |> 
-    full_join(DBPM_effort_catch_input) 
+    full_join(DBPM_effort_catch_input) |> 
+    relocate(region, region_name, .after = scenario)
 
 
   ## Plotting fish and catch data -------------------------------------------
