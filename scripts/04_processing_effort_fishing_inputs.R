@@ -232,7 +232,8 @@ for(f in fao_lme){
     mutate(region = case_when(fao_lme_id < 100 ~ paste0("LME ", region),
                               T ~ paste0("FAO ", region-100)),
            region_name = unique(ss_catches_summ$region_name)) |> 
-    relocate(region_name, .after = region)
+    relocate(region_name, .after = region) |> 
+    filter(year <= 2010)
   
   #Saving summarised catch and effort data
   DBPM_effort_catch_input |> 
