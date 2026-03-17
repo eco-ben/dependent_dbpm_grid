@@ -38,12 +38,6 @@ if(!is.null(smoothed)){
   smoothed <- ""
 }
 
-
-# Loading size structure for catches
-ss_catches <- read_csv_arrow(
-  file.path("/g/data/vf71/fishmip_inputs/ISIMIP3a/effort_catch_data", 
-            "summary_size_spectrum_catches_fao-lme.csv"))
-
 # Initial calibration loop ------------------------------------------------
 for(f in fao_lme){
   # Load inputs (weighted means) - We will only use 1 deg inputs to calculate 
@@ -52,24 +46,11 @@ for(f in fao_lme){
     file.path(base_folder, f, paste0("monthly_weighted", smoothed)), 
     paste0("dbpm_clim-fish-inputs", fn_search, "_", f), full.names = T))
   
-  
-  
-  # Calculate number of days between dates to convert expc_bot from seconds to
-  # month
-  dates <- c(dbpm_inputs$time, max(dbpm_inputs$time)+months(1))
-  n_days <- as.numeric(difftime(dates, lag(dates)))
-  # Biomass density of detritus g.m-2 (convert expc_bot from mol m-2 s-1)
-  dbpm_inputs <- dbpm_inputs |> 
-    mutate(n_days = n_days[!is.na(n_days)],
-           time_conversion = 60*60*24*n_days,
-           expc_bot_g_m2 = expc_bot*12.0107*time_conversion)
-  
-  
-  reg_code <- str_extract(f, "-([0-9]+)", group = 1)
-  
-  min_fish_size <- ss_catches |> 
-    filter(area == reg_code & year == min(year)) |> 
-    pull(min_weight_class)
+  min_fish_size <- dbpm_inputs |> 
+    drop_na(min_fished_weight_class) |> 
+    filter(year == min(year)) |> 
+    distinct(min_fished_weight_class) |> 
+    pull()
   
   ## Searching best fishing parameters values for area of interest ----------
   #Path to folder where results will be stored
@@ -82,7 +63,7 @@ for(f in fao_lme){
       min_fish_size_pred = min_fish_size, min_fish_size_detrit = min_fish_size, 
       forcing_file = dbpm_inputs, gridded_forcing = NULL, 
       best_val_folder = results_folder, best_param = F, 
-      detritus_initial = dbpm_inputs$expc_bot_g_m2[1]) |>
+      detritus_input = dbpm_inputs$input_w) |>
       rowid_to_column("id")
   }else{
     params_calibration <- read_parquet(
