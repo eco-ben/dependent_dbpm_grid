@@ -338,8 +338,11 @@ gravitymodel <- function(effort, prop_b, depth, iter){
 
   
 # Run model per grid cell or averaged over an area ------
-sizemodel <- function(params, temp_effect = T, use_init = F){
+sizemodel <- function(params, temp_effect = T, use_init = F, 
+                      detritus_input = NULL){
   with(params,{
+    # - detritus_input (numeric). Optional. Default is NULL. Detritus input used 
+    #   to calculate detritus biomass
     # Model for a dynamical ecosystem comprised of: two functionally distinct 
     # size spectra (predators and detritivores), size structured primary 
     # producers and an unstructured detritus resource pool. 
@@ -634,14 +637,14 @@ sizemodel <- function(params, temp_effect = T, use_init = F){
       #Detritus Biomass Density Pool - fluxes in and out (g.m-2.yr-1) of 
       #detritus pool and solve for detritus biomass density in next time step 
       
-      #considering pelagic faeces as input as well as dead bodies from both 
-      #pelagic and benthic communities and phytodetritus (dying sinking
-      #phytoplankton)
+      # considering pelagic faeces as input as well as dead bodies from both 
+      # pelagic and benthic communities and phytodetritus (dying sinking
+      # phytoplankton)
       # Temperature effects removed from senescence mortality on 2025-08-14
       # top match total mortality calculation above
-      # Senescense mortality removed altoghether from detritus calculations
+      # Senescense mortality removed altogether from detritus calculations
       # after discussion with Julia on 2025-08-15
-      if(length(init_detritus) == 1){
+      if(is.null(detritus_input)){
         if(detritus_coupling){
           # pelagic spectrum inputs (sinking dead bodies and faeces) - export 
           # ratio used for "sinking rate" + benthic spectrum inputs (dead stuff
@@ -664,20 +667,21 @@ sizemodel <- function(params, temp_effect = T, use_init = F){
           input_w <- sum(ben_tempeffect[i]*other_mort_det*detritivores[, i]*
                            size_bins_vals*log_size_increase)+
             sum(senes_mort_det*detritivores[, i]*size_bins_vals*log_size_increase)
+        }}else{
+          input_w <- detritus_input[i]
         }
         
-        # get burial rate from Dunne et al. 2007 equation 3
-        burial <- input_w*(0.013+0.53*input_w^2/(7+input_w)^2)
-        output_w <- output_w+burial
+      # get burial rate from Dunne et al. 2007 equation 3
+      burial <- input_w*(0.013+0.53*input_w^2/(7+input_w)^2)
+      output_w <- output_w+burial
+      
+      # losses from detritivory + burial rate (not including remineralisation
+      # bc that goes to p.p. after sediment, we are using realised p.p. as
+      # inputs to the model) 
+      dW <- input_w-output_w
         
-        # losses from detritivory + burial rate (not including remineralisation
-        # bc that goes to p.p. after sediment, we are using realised p.p. as
-        # inputs to the model) 
-        dW <- input_w-output_w
-          
-        #biomass density of detritus g.m-2
-        detritus[i+1] <- detritus[i]+dW*timesteps_years
-      }
+      #biomass density of detritus g.m-2
+      detritus[i+1] <- detritus[i]+dW*timesteps_years
 
       # Pelagic Predator Density (nos.m-2)- solve for time + timesteps_years 
       # using implicit time Euler upwind finite difference (help from Ken 
@@ -814,7 +818,7 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = TRUE,
   # in grams for detritivores This parameter represents the exponent using a 
   # base of 10. When using default value -3, this means the minimum size for 
   # detritivores is 10^(-3) or 0.001 g.
-  # '...' captures extra parameters for the `sizeparam` function
+  # '...' captures extra parameters for the `sizemodel` function
   #
   #Output:
   # If withinput set to TRUE:
@@ -824,11 +828,11 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = TRUE,
   
   params <- sizeparam(dbpm_inputs, fishing_params, 
                       xmin_consumer_u = xmin_consumer_u, 
-                      xmin_consumer_v = xmin_consumer_v, ...)
+                      xmin_consumer_v = xmin_consumer_v)
   
   # run model through time
   # TO DO IN SIZEMODEL CODE: make fishing function like one in model template
-  result_set <- sizemodel(params)
+  result_set <- sizemodel(params, ...)
   size_bins <- 10^params$log10_size_bins
   
   if(withinput){
@@ -899,6 +903,7 @@ getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F,
   # in grams for detritivores This parameter represents the exponent using a 
   # base of 10. When using default value -3, this means the minimum size for 
   # detritivores is 10^(-3) or 0.001 g.
+  # '...' captures extra parameters for the `sizemodel` function
   #
   #Output:
   # If corr set to FALSE:
@@ -1023,9 +1028,10 @@ getError <- function(fishing_params, dbpm_inputs, year_int = 1950, corr = F,
 
 #Carry out LHS param search ----
 LHSsearch <- function(num_iter = 1, seed = 1234, search_volume = "estimated",
-                      min_fish_size_pred = NULL, min_fish_size_detrit = NULL, 
                       forcing_file = NULL, gridded_forcing = NULL, 
-                      best_param = T, best_val_folder = NULL, ...){
+                      best_param = T, best_val_folder = NULL, 
+                      min_fish_size_pred = NULL, min_fish_size_detrit = NULL,
+                      ...){
   #Inputs:
   # - num_iter (integer) - Number of individual runs. Default is 1.
   # - search_volume (character or numeric) - Default is "estimated". It also 
@@ -1041,6 +1047,7 @@ LHSsearch <- function(num_iter = 1, seed = 1234, search_volume = "estimated",
   # tested are returned
   # - best_val_folder (character) - Optional. If provided, it must be the full
   # path to the folder where LHS search results will be saved
+  # - '...' captures extra parameters for the `sizemodel` function
   #
   #Output:
   # - bestvals (data frame) - Contains the values for LHS parameters that 
@@ -1346,23 +1353,19 @@ plot_growth_rate <- function(growth_df, params, region, fishing_params = NULL){
     # Prepare data for plotting - Ensure only data for fished classes is
     # included in plots
     plot_data <- growth_df |> 
+      filter(time == max(time, na.rm = T)) |> 
       mutate(size_class = 10**size_class) |> 
       filter(size_class >= 0.1 & size_class <= 10**5) |> 
-      rowwise() |> 
-      mutate(mean_growth = mean(c(predators, detritivores), na.rm = T)) |> 
-      ungroup() |> 
-      group_by(decade, size_class) |> 
-      summarise(across(c(predators, detritivores, mean_growth), 
-                       ~ mean(.x, na.rm = T))) |> 
+      group_by(size_class) |> 
+      summarise(across(c(predators, detritivores), ~ mean(.x, na.rm = T))) |> 
       ungroup() |>
-      pivot_longer(c(predators, detritivores, mean_growth), names_to = "group", 
+      pivot_longer(c(predators, detritivores), names_to = "group", 
                    values_to = "growth")
     
     # Create size spectrum plot
     p1 <- plot_data |> 
-      ggplot(aes(size_class, growth, colour = decade, group = decade))+
+      ggplot(aes(size_class, growth, colour = group))+
       geom_line()+
-      scale_color_gradient(low = "#ffffcc", high = "#800026")+
       scale_y_continuous(trans = "log10", 
                          name = "Relative growth rate per year")+
       scale_x_continuous(trans = "log10", name = "Body mass (g)")+
@@ -1373,9 +1376,9 @@ plot_growth_rate <- function(growth_df, params, region, fishing_params = NULL){
                             "\nBenthic preference: ", 
                             round(params$pref_benthos, 3)))+
       facet_grid(~group, scales = "free")+
+      theme_bw()+
       theme(panel.grid.minor = element_blank(), 
-            plot.title = element_text(hjust = 0.5, face = "bold"), 
-            panel.background = element_rect(fill = "#737373"))
+            plot.title = element_text(hjust = 0.5, face = "bold"))
     
     if(!is.null(fishing_params)){
       p1 <- plot_grid(p1, grid.arrange(tableGrob(fishing_params, rows = NULL)),
