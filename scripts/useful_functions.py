@@ -328,6 +328,94 @@ def weighted_mean_timestep(file_paths, weights, region):
 
 
 #Calculating export ratio
+def get_threshold_depth(folder_gridded_data, gfdl_exp, max_depth = 200):
+    '''
+    Inputs:
+    - folder_gridded_data (character) File path pointing to folder containing
+    zarr files with GFDL data for the region of interest
+    - gfdl_exp (character) Select GFDL experiment 'ctrl_clim' or 'obs_clim'
+    - max_depth (numeric) Default is 200 (m) Maximum depth in meters to be considered when
+    processing DBPM phytoplankton inputs
+    
+    Outputs:
+    - thresh_depth (data array) Contains the maximum depth to integrate phytoplankton
+    inputs
+    '''
+    
+    #load depth
+    depth = xr.open_zarr(glob(
+        os.path.join(folder_gridded_data, f'*{gfdl_exp}_deptho_*'))[0])['deptho']
+    
+    # Identify areas where depth is 'max_depth' or less
+    depth_n = depth.where(depth <= max_depth)
+
+    #Load mixed layer depth
+    mld = xr.open_zarr(glob(
+        os.path.join(folder_gridded_data, f'*{gfdl_exp}_mlotst-0125_*'))[0])['mlotst-0125']
+
+    # Check if MLD depth in shallow areas (<= 100 m depth) is less 100 m
+    # Keep the largest depth (water column depth vs MLD)
+    thresh_depth = np.maximum(depth_n, mld)
+
+    # For all other areas use MLD
+    thresh_depth = xr.where(np.isnan(thresh_depth), mld, thresh_depth)
+
+    # Store description for 'long name' attribute
+    # Updating metadata
+    thresh_depth.name = 'threshold_depth'
+    thresh_depth.attrs = {'standard_name': f'threshold_depth_mld_{max_depth}m',
+                          'long_name':
+                          f'Threshold depth based on MLD and at least {max_depth}m in shallow waters', 
+                          'units': 'm'}
+    return thresh_depth
+
+
+# Integrating (mean) phytoplankton inputs to threshold depth
+def integrating_phyto(folder_gridded_data, gfdl_exp, thresh_depth = 200):
+    '''
+    Inputs:
+    - folder_gridded_data (character) File path pointing to folder containing
+    zarr files with vertically resolved phytopklankton outputs (`phyc` and `phypico`) 
+    from GFDL
+    - gfdl_exp (character) Select GFDL experiment 'ctrl_clim' or 'obs_clim'
+    - thresh_depth (numeric) Default is 200 (m) Maximum depth in meters to be considered 
+    when processing DBPM phytoplankton inputs
+
+    Outputs:
+    - phyc (data array) Contains integrated phytoplankton values up to threshold depth.
+    - phypico (data array) Contains integrated picophytoplankton values up to threshold
+    depth.
+    '''
+
+    #load depth
+    depth = (xr.open_zarr(glob(os.path.join(folder_gridded_data, 
+                                            f'*_thkcello_*'))[0])['thkcello'].
+        drop_vars('time').squeeze().sel(lev = slice(None, thresh_depth)).fillna(0))
+    
+    #Load phypico
+    phypico = (xr.open_zarr(glob(
+        os.path.join(folder_gridded_data, f'*{gfdl_exp}_phypico_*'))[0])['phypico'].
+        sel(lev = slice(None, thresh_depth)))
+    phypico_weighted = phypico.weighted(depth).mean('lev')
+    phypico_weighted = phypico_weighted.assign_attrs(
+        {'standard_name': 'mean_mole_concentration_of_picophytoplankton_expressed_as_carbon_in_sea_water',
+         'long_name': 'Depth Weighted Mean of Picophytoplankton Carbon Concentration', 
+         'units': 'mol m-3'})
+    
+    #Load phyc
+    phyc = (xr.open_zarr(glob(
+        os.path.join(folder_gridded_data, f'*{gfdl_exp}_phyc_*'))[0])['phyc'].
+        sel(lev = slice(None, thresh_depth)))
+    phyc_weighted = phyc.weighted(depth).mean('lev')
+    phyc_weighted = phyc_weighted.assign_attrs(
+        {'standard_name': 'mean_mole_concentration_of_phytoplankton_expressed_as_carbon_in_sea_water',
+         'long_name': 'Depth Weighted Mean of Phytoplankton Carbon Concentration', 
+         'units': 'mol m-3'})
+    
+    return phyc_weighted, phypico_weighted
+
+
+#Calculating export ratio
 def getExportRatio(folder_gridded_data, gfdl_exp):
     '''
     Inputs:
@@ -354,15 +442,16 @@ def getExportRatio(folder_gridded_data, gfdl_exp):
     #Load phypico-vint
     sphy = xr.open_zarr(glob(
         os.path.join(folder_gridded_data, 
-                     f'*{gfdl_exp}_phypico-vint_*'))[0])['phypico-vint']
+                     f'*{gfdl_exp}_phypico-vint200m_*'))[0])['phypico-vint']
     #Rename phypico-vint to sphy
     sphy.name = 'sphy'
     sphy = sphy.assign_attrs({'short_name': 'sphy',
-                              'long_name': 'Small phytoplankton carbon content'})
+                              'long_name': 'Small phytoplankton carbon content', 
+                              'units': 'mol m-3'})
 
     #Load phyc-vint
     ptotal = xr.open_zarr(glob(
-        os.path.join(folder_gridded_data, f'*{gfdl_exp}_phyc-vint_*'))[0])['phyc-vint']
+        os.path.join(folder_gridded_data, f'*{gfdl_exp}_phyc-vint200m_*'))[0])['phyc-vint']
 
     #Calculate large phytoplankton
     lphy = ptotal-sphy
@@ -370,7 +459,8 @@ def getExportRatio(folder_gridded_data, gfdl_exp):
     lphy.name = 'lphy'
     lphy = lphy.assign_attrs(ptotal.attrs)
     lphy = lphy.assign_attrs({'short_name': 'lphy',
-                              'long_name': 'Large phytoplankton carbon content'})
+                              'long_name': 'Large phytoplankton carbon content', 
+                              'units': 'mol m-3'})
 
     #Calculate phytoplankton size ratios
     plarge = (lphy/ptotal)
@@ -384,9 +474,9 @@ def getExportRatio(folder_gridded_data, gfdl_exp):
     #If values are above 1, assign a value of 1
     er = xr.where(er > 1, 1, er)
     er.name = 'export_ratio'
-    er = er.assign_attrs({'short_name': 'export_ratio',
-                          'long_name': 'Export ratio of organic matter expressed',
-                          'units': 'mol m-2'})
+    er = er.assign_attrs({'short_name': 'export_ratio_expressed_as_carbon_in_sea_water',
+                          'long_name': 'Export ratio of organic matter',
+                          'units': 'mol m-3'})
     
     return sphy, lphy, er
 
@@ -450,8 +540,7 @@ def GetPPIntSlope(gfdl_folder, gfdl_exp, mmin = 10**(-14.25), mmid = 10**(-10.18
         'short_name': 'slope',
         'long_name': 'Slope of primary producer spectrum',
         'comment': ('Calculations described in full in Woodworth-'+ 
-                    'Jefcoats et al 2013 (DOI: 10.1111/gcb.12076)'),
-        'units': 'TBA'})
+                    'Jefcoats et al 2013 (DOI: 10.1111/gcb.12076)')})
 
     #a is really log10(a), same a when small, midsmall are used
     intercept = (large-(slope*midlarge))
@@ -460,8 +549,7 @@ def GetPPIntSlope(gfdl_folder, gfdl_exp, mmin = 10**(-14.25), mmid = 10**(-10.18
         'short_name': 'intercept',
         'long_name': 'Intercept of primary producer spectrum',
         'comment': ('Calculations described in full in Woodworth-'+ 
-                    'Jefcoats et al 2013 (DOI: 10.1111/gcb.12076)'),
-        'units': 'TBA'})
+                    'Jefcoats et al 2013 (DOI: 10.1111/gcb.12076)')})
 
     # a could be used directly to replace 10^pp in sizemodel()
     if output == 'slope':

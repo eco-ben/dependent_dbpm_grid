@@ -27,14 +27,14 @@ if __name__ == '__main__':
     base_dir = '/g/data/vf71/fishmip_inputs/ISIMIP3a/global_inputs'
 
     #Define location of area of grid cell
-    area_dir = '/g/data/vf71/shared_resources/grid_cell_area_ESMs/isimip3a'
+    grid_dir = '/g/data/vf71/shared_resources/grid_cell_vars_ESMs/isimip3a'
     
     #Define experiments and resolution
     exp_name = ['obsclim', 'ctrlclim']
     resolutions = ['1deg', '025deg']
 
     #Define variables of interest
-    dbpm_var = ['siconc', 'deptho', 'expc-bot', 'phyc-vint', 'phypico-vint', 'tob', 'tos']
+    dbpm_var = ['deptho', 'phyc', 'phypico', 'siconc', 'deptho', 'expc-bot', 'tob', 'tos']
     
     #Loop through experiments and resolutions
     for res in resolutions:
@@ -48,13 +48,19 @@ if __name__ == '__main__':
         elif res == '025deg':
             arc_res = '15arcmin'
 
-        #Process area of grid cell files
-        [area_file] = glob(os.path.join(area_dir, f'gfdl*_areacello_{arc_res}*.nc'))
+        # Process area of grid cell files
+        [area_file] = glob(os.path.join(grid_dir, f'gfdl*_areacello_{arc_res}*.nc'))
         f_out = os.path.basename(area_file).replace('.nc', '.zarr')
         f_out = os.path.join(gfdl_out, f_out)
         uf.netcdf_to_zarr(area_file, f_out)
         #Load file area to use as land mask for sea ice processing step
         area = xr.open_zarr(f_out)['cellareao']
+
+        # Process thickness of grid cell files
+        [thick_file] = glob(os.path.join(grid_dir, f'gfdl*_thkcello_{arc_res}*.nc'))
+        f_out = os.path.basename(thick_file).replace('.nc', '.zarr')
+        f_out = os.path.join(gfdl_out, f_out)
+        uf.netcdf_to_zarr(thick_file, f_out)
 
         #Process all other variables
         for exp in exp_name:
@@ -67,7 +73,17 @@ if __name__ == '__main__':
                 f_out = os.path.join(gfdl_out, f_out)
                 #Apply function
                 uf.netcdf_to_zarr(gfdl_file, f_out)
-            
+
+            # Vertically integrate phytoplankton inputs up to threshold depth
+            phyc, phypico = uf.integrating_phyto(gfdl_out, exp, thresh_depth = 200)
+            #Save outputs
+            phyc.to_zarr(
+                os.path.join(gfdl_out, base_fn.replace('_var_', '_phyc-vint200m_')), 
+                consolidated = True, mode = 'w')
+            phypico.to_zarr(
+                os.path.join(gfdl_out, base_fn.replace('_var_', '_phypico-vint200m_')), 
+                consolidated = True, mode = 'w')
+
             #Calculate phytoplankton size distribution and export ratio
             sphy, lphy, er = uf.getExportRatio(gfdl_out, exp)
             #Save outputs
