@@ -442,7 +442,7 @@ def getExportRatio(folder_gridded_data, gfdl_exp):
     #Load phypico-vint
     sphy = xr.open_zarr(glob(
         os.path.join(folder_gridded_data, 
-                     f'*{gfdl_exp}_phypico-vint200m_*'))[0])['phypico-vint']
+                     f'*{gfdl_exp}_phypico-vint200m_*'))[0])['phypico']
     #Rename phypico-vint to sphy
     sphy.name = 'sphy'
     sphy = sphy.assign_attrs({'short_name': 'sphy',
@@ -451,7 +451,7 @@ def getExportRatio(folder_gridded_data, gfdl_exp):
 
     #Load phyc-vint
     ptotal = xr.open_zarr(glob(
-        os.path.join(folder_gridded_data, f'*{gfdl_exp}_phyc-vint200m_*'))[0])['phyc-vint']
+        os.path.join(folder_gridded_data, f'*{gfdl_exp}_phyc-vint200m_*'))[0])['phyc']
 
     #Calculate large phytoplankton
     lphy = ptotal-sphy
