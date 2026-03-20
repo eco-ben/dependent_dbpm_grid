@@ -370,6 +370,40 @@ def get_threshold_depth(folder_gridded_data, gfdl_exp, max_depth = 200):
     return thresh_depth
 
 
+# Calculating detrital input near seafloor
+def detrital_input_seafloor(folder_gridded_data, gfdl_exp, benthic_habitat_depth = 20):
+    '''
+    Inputs:
+    - folder_gridded_data (character) File path pointing to folder containing zarr files 
+    for Sinking Particulate Organic Carbon Flux on Bottom (`expc-bot`) from GFDL
+    - gfdl_exp (character) Select GFDL experiment 'ctrl_clim' or 'obs_clim'
+    - benthic_habitat_depth (numeric) Default is 20 (m). Vertical habitat thickness (in 
+    meters) for the benthic group. This parameter represents the depth above seafloor
+    where benthic processes affecting detrital input occur
+
+    Outputs:
+    - input_w (data array) Contains detrital input near seabed needed by DBPM to calculate
+    total detritus biomass
+    '''
+
+    # Load expc-bot
+    eb = xr.open_zarr(glob(os.path.join(folder_gridded_data, 
+                                        f'*{gfdl_exp}_expc-bot_*'))[0])['expc-bot']
+    # Multiplier to transform seconds to years
+    time_conv = eb.time.dt.days_in_year*60*60*24
+
+    # Converting expc-bot from mol m-2 s-1 to gWW m-3 year-1
+    input_w = eb*(12.0107/0.0352)*time_conv/benthic_habitat_depth
+
+    # Updating metada
+    input_w.name = 'input_w'
+    input_w = input_w.assign_attrs({'short_name': 'detrital_input_seafloor',
+                                    'long_name': 'Input fluxes to detritus pool near seafloor',
+                                    'units': 'gWW m-3 yr-1'})
+
+    return input_w
+    
+
 # Integrating (mean) phytoplankton inputs to threshold depth
 def integrating_phyto(folder_gridded_data, gfdl_exp, thresh_depth = 200):
     '''

@@ -73,6 +73,13 @@ if __name__ == '__main__':
                 f_out = os.path.join(gfdl_out, f_out)
                 #Apply function
                 uf.netcdf_to_zarr(gfdl_file, f_out)
+                
+            # Transforming expc-bot (mol m-2 s-1) to input_w (gWW m-2 yr-1)
+            input_w = uf.detrital_input_seafloor(gfdl_out, exp, benthic_habitat_depth = 20)
+            # Save outputs
+            input_w.drop_encoding().to_zarr(
+                os.path.join(gfdl_out, base_fn.replace('_var_', '_input-w20m_')), 
+                consolidated = True, mode = 'w')
 
             # Vertically integrate phytoplankton inputs up to threshold depth
             phyc, phypico = uf.integrating_phyto(gfdl_out, exp, thresh_depth = 200)
