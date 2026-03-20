@@ -126,24 +126,6 @@ for(f in fao_lme){
            depth = ifelse(is.na(depth_m), mean(depth_m, na.rm = T), depth_m)) |> 
     rename(area_m2 = tot_area_m2) |> 
     select(!depth_m)
-  
-  # Calculate number of days between dates to convert expc_bot from seconds to
-  # yearly rate
-  dates <- c(clim_forcing_file$time, max(clim_forcing_file$time)+months(1))
-  n_days <- as.numeric(difftime(dates, lag(dates)))
-  
-  # Biomass density of detritus g.m-2 (convert expc_bot from mol m-2 s-1)
-  clim_forcing_file <- clim_forcing_file |> 
-    mutate(n_days = n_days[!is.na(n_days)]) |> 
-    # needs to be number of seconds per year
-    group_by(year) |> 
-    mutate(n_days = sum(n_days, na.rm = F)) |> 
-    ungroup() |> 
-    mutate(time_conversion = 60*60*24*n_days,
-           # Moles to grams of C to wet weight. From seconds to years
-           input_w = expc_bot*12.0107/0.0352*time_conversion, 
-           .after = expc_bot) |> 
-    select(!c(n_days,time_conversion))
     
   # Getting the mean depth and area of the region of interest
   depth_area <- clim_forcing_file |> 
