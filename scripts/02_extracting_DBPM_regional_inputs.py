@@ -23,7 +23,8 @@ if __name__ == '__main__':
     base_dir = '/g/data/vf71/fishmip_inputs/ISIMIP3a/'
     
     # Define variables for which data will be extracted
-    vars_int = ['expc-bot', 'simask', 'er', 'intercept', 'slope', 'tob', 'tos', 'deptho', 'areacello']
+    vars_int = ['input-w20m', 'er', 'intercept', 'slope', 'expc-bot', 'simask', 'tob', 
+                 'tos', 'deptho', 'areacello']
 
     # Define resolutions
     resolutions = ['1deg', '025deg']
