@@ -339,8 +339,12 @@ gravitymodel <- function(effort, prop_b, depth, iter){
   
 # Run model per grid cell or averaged over an area ------
 sizemodel <- function(params, temp_effect = T, use_init = F, 
-                      detritus_input = NULL){
+                      benthic_habitat_depth = 20, detritus_input = NULL){
   with(params,{
+    # - benthic_habitat_depth (numeric) - Default is 20 meters. This refers to 
+    # the thickness of vertical habitat for the benthic group. This should be
+    # the same value as used in script `00_processing_dbpm_global_inputs.py` 
+    # (see line 78)
     # - detritus_input (numeric). Optional. Default is NULL. Detritus input used 
     #   to calculate detritus biomass
     # Model for a dynamical ecosystem comprised of: two functionally distinct 
@@ -766,22 +770,28 @@ sizemodel <- function(params, temp_effect = T, use_init = F,
     }
     #end time iteration
     
+    # Depth correction to be applied to pelagic predator outputs (biomass and
+    # catches) to ensure these outputs are in units of g m-3 and g m-3 yr-1
+    depth_corr <- min(depth, 200)
+    # Detritivores outputs are multiplied by benthic habitat depth (see new
+    # parameter in `sizemodel` function)
+    
     #output fisheries catches per yr at size
     catch_pred[ind_min_fish_pred:numb_size_bins, 2:(numb_time_steps+1)] <-
       fishing_mort_pred[ind_min_fish_pred:numb_size_bins,]*
       predators[ind_min_fish_pred:numb_size_bins, 2:(numb_time_steps+1)]*
-      size_bins_vals[ind_min_fish_pred:numb_size_bins]
+      size_bins_vals[ind_min_fish_pred:numb_size_bins]*depth_corr
     
     #output fisheries catches per yr at size
     catch_det[ind_min_fish_det:numb_size_bins, 2:(numb_time_steps+1)] <-
       fishing_mort_det[ind_min_fish_det:numb_size_bins,]*
       detritivores[ind_min_fish_det:numb_size_bins, 2:(numb_time_steps+1)]*
-      size_bins_vals[ind_min_fish_det:numb_size_bins]
+      size_bins_vals[ind_min_fish_det:numb_size_bins]*benthic_habitat_depth
     
     # Subsetting predator, detritivore and detritus results to exclude 
     # initialisation values (i.e., first timestep)
-    predators <- predators[,2:(numb_time_steps+1)]
-    detritivores <- detritivores[,2:(numb_time_steps+1)]
+    predators <- predators[,2:(numb_time_steps+1)]*depth_corr
+    detritivores <- detritivores[,2:(numb_time_steps+1)]*benthic_habitat_depth
     detritus <- detritus[2:(numb_time_steps+1)]
     
     return(list(predators = predators[,],
@@ -1146,7 +1156,7 @@ LHSsearch <- function(num_iter = 1, seed = 1234, search_volume = "estimated",
 
 # Correlation and calibration plots ----
 corr_calib_plots <- function(fishing_params, dbpm_inputs,
-                             figure_folder = NULL){
+                             figure_folder = NULL, ...){
   #Inputs:
   # fishing_params (named numeric vector) - Single column with named rows 
   # containing LHS parameters
@@ -1161,7 +1171,7 @@ corr_calib_plots <- function(fishing_params, dbpm_inputs,
   
   #Calculate correlations with tuned fishing parameters and save plots
   corr_nas <- getError(fishing_params, dbpm_inputs, year_int = 1950,
-                       corr = T, figure_folder = figure_folder)
+                       corr = T, figure_folder = figure_folder, ...)
   
   return(corr_nas)
 }
