@@ -1434,7 +1434,7 @@ def defecation_predators(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
 
 
 def detritus_pool(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs, 
-                  dbpm_dynamic_inputs, defbypred, output_w):
+                  dbpm_dynamic_inputs, defbypred, output_w, **kwargs):
     '''
     Inputs:
     - gridded_params (dictionary) Gridded DBPM parameters obtained in step 04.
@@ -1448,51 +1448,58 @@ def detritus_pool(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
      calculated with the "defecation_predators" function
      - output_w (xarray Data Array). Contains detritus output (g.m-2.yr-1) 
      calculated with the "detritus_output" function
+     **Optional**: 
+    - detritus_input (xarray Dataset) Contains gridded inputs for input_w, which is
+    the amount of the detritus new to the system. This data is derived from the 
+    GFDL`expc-bot` variable 
     
     Outputs:
     - det_pool (xarray Dataset). Contains detritus biomass density pool fluxes
     (g.m-2.yr-1)
     '''
 
-    # Considering pelagic faeces as input as well as dead bodies 
-    # from both pelagic and benthic communities and phytodetritus
-    # (dying sinking phytoplankton)
-    if gridded_params['detritus_coupling']:
-        # Pelagic spectrum inputs (sinking dead bodies and faeces): 
-        # Export ratio used for "sinking rate" + benthic spectrum 
-        # inputs (dead stuff already on/in seafloor)
-        input_w = (dbpm_dynamic_inputs['sinking_rate']*
-                   (defbypred+
-                    ((dbpm_fixed_inputs['other_mort_pred']*
-                      dbpm_dynamic_inputs['pel_tempeffect']*
-                      dbpm_init_inputs['predators']*
-                      dbpm_fixed_inputs['size_bin_vals']*
-                      gridded_params['log_size_increase'])+
-                     (dbpm_fixed_inputs['senes_mort_pred']*
-                      dbpm_dynamic_inputs['pel_tempeffect']*
-                      dbpm_init_inputs['predators']*
-                      dbpm_fixed_inputs['size_bin_vals']*
-                      gridded_params['log_size_increase'])+
-                     (dbpm_fixed_inputs['other_mort_det']*
-                      dbpm_dynamic_inputs['ben_tempeffect']*
-                      dbpm_fixed_inputs['size_bin_vals']*
-                      gridded_params['log_size_increase']*
-                      dbpm_init_inputs['detritivores'])+
-                    (dbpm_fixed_inputs['senes_mort_det']*
-                      dbpm_dynamic_inputs['ben_tempeffect']*
-                      dbpm_fixed_inputs['size_bin_vals']*
-                      gridded_params['log_size_increase']*
-                      dbpm_init_inputs['detritivores']))
-                    .sum('size_class')))
+    if 'detritus_input' not in kwargs.keys():
+        # Considering pelagic faeces as input as well as dead bodies 
+        # from both pelagic and benthic communities and phytodetritus
+        # (dying sinking phytoplankton)
+        if gridded_params['detritus_coupling']:
+            # Pelagic spectrum inputs (sinking dead bodies and faeces): 
+            # Export ratio used for "sinking rate" + benthic spectrum 
+            # inputs (dead stuff already on/in seafloor)
+            input_w = (dbpm_dynamic_inputs['sinking_rate']*
+                       (defbypred+
+                        ((dbpm_fixed_inputs['other_mort_pred']*
+                          dbpm_dynamic_inputs['pel_tempeffect']*
+                          dbpm_init_inputs['predators']*
+                          dbpm_fixed_inputs['size_bin_vals']*
+                          gridded_params['log_size_increase'])+
+                         (dbpm_fixed_inputs['senes_mort_pred']*
+                          dbpm_dynamic_inputs['pel_tempeffect']*
+                          dbpm_init_inputs['predators']*
+                          dbpm_fixed_inputs['size_bin_vals']*
+                          gridded_params['log_size_increase'])+
+                         (dbpm_fixed_inputs['other_mort_det']*
+                          dbpm_dynamic_inputs['ben_tempeffect']*
+                          dbpm_fixed_inputs['size_bin_vals']*
+                          gridded_params['log_size_increase']*
+                          dbpm_init_inputs['detritivores'])+
+                        (dbpm_fixed_inputs['senes_mort_det']*
+                          dbpm_dynamic_inputs['ben_tempeffect']*
+                          dbpm_fixed_inputs['size_bin_vals']*
+                          gridded_params['log_size_increase']*
+                          dbpm_init_inputs['detritivores']))
+                        .sum('size_class')))
+        else:
+            input_w = (((dbpm_fixed_inputs['other_mort_det']*
+                         dbpm_dynamic_inputs['ben_tempeffect']*
+                         dbpm_fixed_inputs['size_bin_vals']*
+                         gridded_params['log_size_increase']*
+                         dbpm_init_inputs['detritivores'])).
+                       sum('size_class'))
     else:
-        input_w = (((dbpm_fixed_inputs['other_mort_det']*
-                     dbpm_dynamic_inputs['ben_tempeffect']*
-                     dbpm_fixed_inputs['size_bin_vals']*
-                     gridded_params['log_size_increase']*
-                     dbpm_init_inputs['detritivores'])).
-                   sum('size_class'))
+        input_w = kwargs.get('detritus_input')
    
-   # Get burial rate from Dunne et al. 2007 equation 3
+    # Get burial rate from Dunne et al. 2007 equation 3
     burial = input_w*(0.013+0.53*input_w**2/(7+input_w)**2)
     output_w = output_w+burial
     
@@ -1665,7 +1672,7 @@ def tot_biomass_calc(gridded_params, dbpm_fixed_inputs, group, biomass_current,
 
 
 def detritus_rk4_step(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs, 
-                      dbpm_dynamic_inputs, detritus_current, h):
+                      dbpm_dynamic_inputs, detritus_current, h, **kwargs):
     """
     Single RK4 step for detritus calculation
     
@@ -1703,7 +1710,7 @@ def detritus_rk4_step(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
         
         # Calculate detritus pool changes
         det_pool = detritus_pool(gridded_params, dbpm_fixed_inputs, temp_inputs,
-                                dbpm_dynamic_inputs, defbypred, output_w)
+                                dbpm_dynamic_inputs, defbypred, output_w, **kwargs)
         
         return det_pool['dW']
     
@@ -1722,9 +1729,37 @@ def detritus_rk4_step(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
 # Run model per grid cell or averaged over an area ------
 def gridded_sizemodel_rk4(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs, 
                           dbpm_dynamic_inputs, region, model_res, out_folder, 
-                          weekly = False, force_finite = True, rk4_substeps = 4):
+                          weekly = False, force_finite = True, rk4_substeps = 4,
+                          benthic_habitat_depth = 20, **kwargs):
     """
     Modified gridded_sizemodel with RK4 for detritus calculation
+    
+    Inputs:
+    - gridded_params (dictionary) Gridded DBPM parameters obtained in step 04.
+    - dbpm_fixed_inputs (xarray Dataset) Contains fixed gridded inputs needed to run 
+    DBPM
+    - dbpm_init_inputs (xarray Dataset) Contains gridded inputs with initialisation 
+    values for predators, detritivores and detritus
+    - dbpm_dynamic_inputs (xarray Dataset) Contains dynamic gridded inputs need to run
+    DBPM
+    - region (character) Name of region being processed (as included in folder and file
+    names)
+    - model_res (character) Spatial resolution of DBPM inputs (as included in folder
+    and file names)
+    - out_folder (character) Full path to folder where DBPM outputs will be stored
+    - weekly (boolean) Default is False. If set to True, the model will run at weekly
+    timesteps
+    **Optional**: 
+    - detritus_input (xarray Dataset) Contains gridded inputs for input_w, which is
+    the amount of the detritus new to the system. This data is derived from the 
+    GFDL`expc-bot` variable 
+    - benthic_habitat_depth (numeric) - Default is 20 meters. This refers to the 
+    thickness of vertical habitat for the benthic group. This should be the same value
+    as used in script `00_processing_dbpm_global_inputs.py` (see line 78)
+
+    Outputs:
+    - None. This function does not return any objects. Instead outputs are saved in
+    the path provided in the "out_folder" argument
     """
     
     # Storing date from dynamic dataset
@@ -1805,8 +1840,8 @@ def gridded_sizemodel_rk4(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     # Perform multiple RK4 substeps for stability
     for substep in range(rk4_substeps):
         detritus = detritus_rk4_step(gridded_params, dbpm_fixed_inputs, 
-                                    dbpm_init_inputs, dbpm_dynamic_inputs, 
-                                    detritus, h)
+                                       dbpm_init_inputs, dbpm_dynamic_inputs, 
+                                       detritus, h, **kwargs)
         detritus = xr.where(detritus < 0, 0, detritus).load()
         
     # Updating timestamp (results for next time step)
@@ -1843,7 +1878,8 @@ def gridded_sizemodel_rk4(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                                  total_mortality = mortality_pred['Z_u']).load()
     
     #If values are negative, assign a value of 0
-    predators = xr.where(predators < 0, 0, predators)
+    predators = xr.where(predators < 0, 0, 
+                         predators*dbpm_fixed_inputs['depth_corr'])
     if force_finite:
         predators = predators.where(np.isfinite(predators))
     
@@ -1875,8 +1911,9 @@ def gridded_sizemodel_rk4(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                                     reprod_rate = reprod_det['R_v'],
                                     growth_rate = growth_rates_pred_det['GG_v'], 
                                     total_mortality = mortality_det['Z_v']).load()
-    #If values are negative, assign a value of 0
-    detritivores = xr.where(detritivores < 0, 0, detritivores)
+    #If values are negative, assign a value of 0 - Detritivores outputs are multiplied
+    #by benthic habitat depth (see new parameter in `sizemodel` function)
+    detritivores = xr.where(detritivores < 0, 0, detritivores*benthic_habitat_depth)
     if force_finite:
         detritivores = detritivores.where(np.isfinite(detritivores))
     
