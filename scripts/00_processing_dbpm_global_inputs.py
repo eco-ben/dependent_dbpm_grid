@@ -74,7 +74,7 @@ if __name__ == '__main__':
                 #Apply function
                 uf.netcdf_to_zarr(gfdl_file, f_out)
                 
-            # Transforming expc-bot (mol m-2 s-1) to input_w (gWW m-2 yr-1)
+            # Transforming expc-bot (mol m-2 s-1) to input_w (gWW m-3 yr-1)
             input_w = uf.detrital_input_seafloor(gfdl_out, exp, benthic_habitat_depth = 20)
             # Save outputs
             input_w.drop_encoding().to_zarr(
