@@ -65,7 +65,7 @@ if __name__ == '__main__':
         base_folder, 'log10_size_bins_matrix.zarr/'))['size_bins']
     ds_fixed['log10_size_bins'] = log10_size_bins_mat
     ds_fixed['size_bin_vals'] = 10**log10_size_bins_mat
-    ds_fixed['depth_corr'] = xr.where(ds_fixed['depth'] < 200, depth, 200)
+    ds_fixed['depth_corr'] = xr.where(ds_fixed['depth'] < 200, ds_fixed['depth'], 200)
     #Removing datarrays added to fixed inputs
     del log10_size_bins_mat
 
