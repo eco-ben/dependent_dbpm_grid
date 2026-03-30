@@ -3,8 +3,12 @@
 # Functions have been adapted from previous DBPM work by JLB, CN, JB and others
 # 
 # Edited by: Denisse Fierro Arcos
-# Date of update: 2024-12-19
-
+# Date of update: 2024-03-26
+#
+# Choose local R library - Activate when using R 4.5 
+# .libPaths("/g/data/vf71/la6889/R_personal_lib/")
+# Choose default R library when using RStudio (Rocker image)
+# .libPaths("/home/581/la6889/R/rocker-rstudio/4.2")
 
 # Loading libraries -------------------------------------------------------
 library(tidyr)
@@ -653,8 +657,6 @@ sizemodel <- function(params, temp_effect = T, use_init = F,
           # pelagic spectrum inputs (sinking dead bodies and faeces) - export 
           # ratio used for "sinking rate" + benthic spectrum inputs (dead stuff
           # already on/in seafloor)
-          # removing temperature effects from senescence mortality to match
-          # total mortality calculations above. Changed on 2025-08-14
           input_w <- (sinking_rate[i]* 
                         (sum(defbypred[ind_min_pred_size:numb_size_bins]*
                                log_size_increase)+
@@ -1364,7 +1366,7 @@ plot_growth_rate <- function(growth_df, params, region, fishing_params = NULL){
     # Prepare data for plotting - Ensure only data for fished classes is
     # included in plots
     plot_data <- growth_df |> 
-      filter(time == max(time, na.rm = T)) |> 
+      filter(decade == max(decade, na.rm = T)) |> 
       mutate(size_class = 10**size_class) |> 
       filter(size_class >= 0.1 & size_class <= 10**5) |> 
       group_by(size_class) |> 
@@ -1380,7 +1382,7 @@ plot_growth_rate <- function(growth_df, params, region, fishing_params = NULL){
       scale_y_continuous(trans = "log10", 
                          name = "Relative growth rate per year")+
       scale_x_continuous(trans = "log10", name = "Body mass (g)")+
-      labs(title = paste0(unique(dbpm_inputs$region),
+      labs(title = paste0(str_replace_all(str_to_upper(region), "-", " "),
                           ": Mean growth rate per decade"),
            caption = paste0("Pelagic preference: ", 
                             round(params$pref_pelagic, 3),
