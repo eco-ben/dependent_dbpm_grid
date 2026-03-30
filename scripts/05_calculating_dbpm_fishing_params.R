@@ -1,4 +1,7 @@
 
+# Choose local R library
+# .libPaths("/g/data/vf71/la6889/R_personal_lib/")
+
 # Loading libraries -------------------------------------------------------
 source("scripts/useful_functions.R")
 library(dplyr)
@@ -15,7 +18,7 @@ fao_lme <- list.dirs(base_folder, recursive = F, full.names = F) |>
   str_subset(pattern = "fao_lme-")
 
 # Define search volume
-search_volume <- 0.5
+search_volume <- 64
 
 # Calibration runs should include fishing?
 fishing <- F
@@ -60,10 +63,10 @@ for(f in fao_lme){
   if(!params_ready & fishing){
     params_calibration <- LHSsearch(
       num_iter = no_iter, search_volume = search_volume,  
-      min_fish_size_pred = min_fish_size, min_fish_size_detrit = min_fish_size, 
+      min_fish_size_pred = min_fish_size, min_fish_size_detrit = min_fish_size,
       forcing_file = dbpm_inputs, gridded_forcing = NULL, 
-      best_val_folder = results_folder, best_param = F, 
-      detritus_input = dbpm_inputs$input_w) |>
+      best_val_folder = results_folder, best_param = F) |> #, 
+      # detritus_input = dbpm_inputs$input_w) |>
       rowid_to_column("id")
   }else{
     params_calibration <- read_parquet(
@@ -79,7 +82,8 @@ for(f in fao_lme){
   params_corr <- tryCatch(
     {params_calibration |> 
       split(params_calibration$id) |>
-      map_df(\(x) getError(x, dbpm_inputs, corr = T))},
+      map_df(\(x) getError(x, dbpm_inputs, corr = T))}, 
+                           # detritus_input = dbpm_inputs$input_w))},
     error = function(e){
       NULL},
     warning = function(w){
@@ -110,7 +114,7 @@ for(f in fao_lme){
       # Prepare data to create correlation plot
       p1_data <- params_calibration |> 
         select(fmort_u:fminx_v, rmse:cor) |> 
-        filter(cor >= 0.2) |>
+        filter(cor >= 0.25) |>
         mutate(qc = ifelse(cor >= 0.5, "good", "bad"))
         
       # Apply different design to plot based on data available
@@ -147,7 +151,8 @@ for(f in fao_lme){
       }
       #Create plot with best performing parameters
       good |> 
-        corr_calib_plots(dbpm_inputs, results_folder)
+        corr_calib_plots(dbpm_inputs, results_folder)#,
+                         # detritus_input = dbpm_inputs$input_w)
       
       # Calibration plots with parameters that had highest correlation values
       params_calibration |> 
@@ -279,7 +284,7 @@ for(f in bad_params){
 
 
 # Running DBPM calibration (non-spatial runs) -----------------------------
-out_folder <- "/g/data/vf71/fishmip_outputs/ISIMIP3a/fao_outputs"
+out_folder <- "/g/data/vf71/fishmip_outputs/ISIMIP3a/fao_lme_outputs/"
 
 # Start calibration runs
 for(f in fao){
