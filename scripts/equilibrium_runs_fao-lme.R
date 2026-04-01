@@ -39,8 +39,7 @@ fish_param <- data.frame("region" = NA, "fmort_u" = 0, "fmort_v" = 0,
                          "search_vol" = 64*seq(0.1, 10, by = 0.1))
 
 # Parallelise using workers available using parallelly
-no_cores <- availableCores()
-plan(multisession, workers = no_cores)
+plan(multisession, workers = availableCores())
 
 # Initial calibration loop ------------------------------------------------
 for(f in fao_lme){
