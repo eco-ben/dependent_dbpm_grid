@@ -1243,7 +1243,9 @@ dbpm_output_mat_to_df <- function(dbpm_outputs, dbpm_temporal_range,
   # Add column classifying estimates per decade 
   bio_data <- bio_data |> 
     mutate(time = as_date(time), decade = ((year(time)-1) %/% 10)*10,
-           size_class = as.numeric(size_class), .before = predators) |> 
+           size_class = as.numeric(size_class), 
+           search_vol = dbpm_outputs$params$hr_volume_search, 
+           .before = predators) |> 
     relocate(size_class, .before = predators)
   
   #Return data about density
@@ -1293,8 +1295,7 @@ plotsizespectrum <- function(density_df, params, region, fishing_params = NULL,
         ungroup()
     }else{
       plot_data <- plot_data |> 
-        filter(time == max(time, na.rm = T)) |> 
-        mutate(across(c(predators, detritivores, total), log10))
+        filter(time == max(time, na.rm = T)) 
     }
     plot_data <- plot_data |> 
       mutate(across(c(predators, detritivores, total), log10)) |>
