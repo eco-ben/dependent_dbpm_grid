@@ -1,7 +1,7 @@
 # Equilibrium runs
 
 # Choose local R library
-# .libPaths("/g/data/vf71/la6889/R_personal_lib/")
+.libPaths("/g/data/vf71/la6889/R_personal_lib/")
 
 # Loading libraries -------------------------------------------------------
 source("scripts/useful_functions.R")
@@ -98,7 +98,8 @@ for(f in fao_lme){
 
     ## Size spectrum plots per group (predators and detritivores) ---------
     # Transform density matrix to data frame to create plots
-    density_df <- dbpm_output_mat_to_df(init_results, dbpm_inputs$time, "density")
+    density_df <- dbpm_output_mat_to_df(init_results, dbpm_inputs$time, 
+                                        "density")
 
     # Create size spectrum plots
     size_sp_plot <- plotsizespectrum(density_df, init_results$params, f,
@@ -170,3 +171,190 @@ for(f in fao_lme){
   }, .options = furrr_options(seed = T))
 }
 
+
+
+# Processing outputs per region -------------------------------------------
+plan(multisession, workers = availableCores())
+for(f in fao_lme){
+  results_folder <- file.path(out_folder, f, "equilibrium_run")
+  
+  init_files <- list.files(results_folder, pattern = "^init_dbpm", 
+                           full.names = T)
+  
+  calib_files <- list.files(results_folder, pattern = "^dbpm_nonspatial_", 
+                           full.names = T)
+  
+  print(paste0("Running DBPM for region: ", f))
+  
+  # Parallelising output processing within regions of interest
+  future_walk(1:length(init_files), ~{
+    i <- .x
+    init_results <- read_json(init_files[i], simplifyVector = T)
+    calib_run <- read_parquet(calib_files[i]) |> 
+      select(time, year, ends_with("biomass"), total_detritus)
+    min_pred_size <- init_results$params$log10_size_bins[
+      init_results$params$ind_min_pred_size]
+    min_det_size <- init_results$params$log10_size_bins[
+      init_results$params$ind_min_detritivore_size]
+    
+    # Processing density data
+    density_df <- dbpm_output_mat_to_df(init_results, calib_run$time, 
+                                        "density") |> 
+      select(!detritus) |> 
+      mutate(predators = ifelse(size_class < min_pred_size, NA, predators),
+             detritivores = ifelse(size_class < min_det_size, NA, 
+                                   detritivores)) |> 
+      drop_na(detritivores, predators) |> 
+      rowwise() |> 
+      mutate(total = sum(predators, detritivores, na.rm = T)) |>
+      ungroup() |> 
+      summarise(across(c(predators, detritivores, total), 
+                       ~ mean(.x, na.rm = T)), 
+                .by = c(decade, size_class, search_vol)) |> 
+      mutate(across(c(predators, detritivores, total), log10)) |>
+      pivot_longer(c(predators, detritivores, total), names_to = "group", 
+                   values_to = "bio")
+    density_df |> 
+      write_parquet(file.path(results_folder,
+                              paste0("size_spectrum_data_", f, "_searchvol_",
+                                     unique(density_df$search_vol), ".parquet")))
+   
+    # Processing growth rate data
+    dates_model <- c(min(calib_run$time)%m-% months(1), calib_run$time)
+    growth_df <- dbpm_output_mat_to_df(init_results, dates_model, "growth") |>
+      mutate(size_class = 10**size_class) |>
+      # Excluding growth value for first time step as it is used for model
+      # initialisation only
+      filter(time >= min(as_date(calib_run$time)) & size_class >= 0.1 & 
+               size_class <= 10**5) |> 
+      summarise(across(c(predators, detritivores), ~ mean(.x, na.rm = T)),
+                .by = c(decade, size_class, search_vol)) |> 
+      pivot_longer(c(predators, detritivores), names_to = "group", 
+                   values_to = "growth")
+    
+    growth_df |> 
+      write_parquet(file.path(results_folder,
+                              paste0("growth_rates_data", f, "_searchvol_",
+                                     unique(growth_df$search_vol), ".parquet")))
+  
+    # Processing biomass data
+    biomass_data <- calib_run |>
+      summarise(across(starts_with("total"), ~ mean(.x, na.rm = T)), 
+                .by = year) |>
+      pivot_longer(!year, names_to = "group", values_to = "values",
+                   names_prefix = "total_") |>
+      separate_wider_delim(group, delim = "_", names = c("group", "type"),
+                           too_few = "align_start") |>
+      replace_na(list(type = "detritus")) |> 
+      mutate(search_vol = unique(density_df$search_vol))
+    
+    biomass_data |> 
+      write_parquet(file.path(
+        results_folder, paste0("plankton-pred-detritus-bio_detritus_", f, 
+                               "_searchvol_", unique(density_df$search_vol), 
+                               ".parquet")))
+    }
+  )
+}
+
+
+# Creating diagnostic plots per region ------------------------------------
+for(f in fao_lme){
+  results_folder <- file.path(out_folder, f, "equilibrium_run")
+  
+  print(paste0("Running DBPM for region: ", f))
+
+  ## Size spectrum plots --------------------------------------------------
+  # Loading data
+  density_df <- list.files(results_folder, pattern = "size_spectrum_data_", 
+                           full.names = T) |> 
+    map(\(x) read_parquet(x)) |> 
+    bind_rows() |> 
+    # Removing rows with no data
+    drop_na(bio) 
+  
+  # Plotting data for last decade
+  density_fig <- density_df |> 
+    filter(decade == max(decade)) |>
+    ggplot(aes(size_class, bio, colour = factor(search_vol), 
+               group = search_vol))+
+    geom_line(alpha = 0.5)+
+    lims(y = c(-20, NA))+
+    facet_grid(~group)+
+    labs(colour = "Search volume", 
+         y = expression("" *log[10] ~ "abundance density (m"^-3* ")"),
+         x = expression("" *log[10] ~ "body mass (g)"),
+         title = paste0("Last decade of simulation: Size spectrum - ",
+                        str_to_upper(str_replace_all(f, "_|-", " "))))+
+    theme_bw()
+  
+  # Saving plot
+  ggsave(file.path(results_folder,
+                     paste0("size_spectrum_", f, "_searchvol-check", ".png")),
+         density_fig, bg = "white")
+  
+  ## Growth rate plots ----------------------------------------------------
+  # Loading data
+  growth_df <- list.files(results_folder, pattern = "growth_rates_data", 
+                           full.names = T) |> 
+    map(\(x) read_parquet(x)) |> 
+    bind_rows() |> 
+    # Removing rows with no data
+    drop_na(growth) |> 
+    # Removing rows where growth rate is equal or less than 0
+    filter(growth > 0) 
+
+  # Plotting data for last decade
+  growth_fig <- growth_df |> 
+    filter(decade == max(decade)) |> 
+    ggplot(aes(size_class, growth, colour = factor(search_vol), 
+               group = search_vol))+
+    geom_line(alpha = 0.5)+
+    scale_y_continuous(trans = "log10", 
+                       name = "Relative growth rate per year")+
+    scale_x_continuous(trans = "log10", name = "Body mass (g)")+
+    facet_grid(~group)+
+    labs(colour = "Search volume", 
+         title = paste0("Last decade of simulation: Mean growth rate - ",
+                        str_to_upper(str_replace_all(f, "_|-", " "))))+
+    theme_bw()
+  
+  # Saving plot
+  ggsave(file.path(results_folder,
+                   paste0("growth_rates_", f, "_searchvol-check", ".png")),
+         growth_fig, bg = "white")
+  
+  ## Biomass plots --------------------------------------------------------
+  # Loading data
+  bio_df <- list.files(results_folder, "plankton-pred-detritus-bio_detritus_", 
+                       full.names = T) |> 
+    map(\(x) read_parquet(x)) |> 
+    bind_rows() |> 
+    # Removing rows with no data
+    drop_na(values) |> 
+    # Removing rows where growth rate is equal or less than 0
+    filter(values >= 0) 
+  
+  bad_search_vol <- bio_df |> 
+    count(search_vol, group) |> 
+    filter(n < 200)
+  
+  # Plotting data for entire simulation
+  bio_fig <- bio_df |> 
+    filter(!search_vol %in% bad_search_vol$search_vol) |> 
+    ggplot(aes(year, values, colour = factor(search_vol), 
+               group = search_vol))+
+    geom_line(alpha = 0.5)+
+    facet_grid(group~., scales = "free")+
+    labs(colour = "Search volume", 
+         title = paste0("Last decade of simulation: Estimated biomass per group - ",
+                        str_to_upper(str_replace_all(f, "_|-", " "))))+
+    theme_bw()+
+    theme(axis.title = element_blank())
+  
+  # Saving plot
+  ggsave(file.path(results_folder,
+                   paste0("plankton-pred-detritus-bio_detritus_", f, 
+                          "_searchvol-check", ".png")),
+         bio_fig, bg = "white")
+}
