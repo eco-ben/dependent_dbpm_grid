@@ -12,6 +12,7 @@ library(purrr)
 library(furrr)
 library(GGally)
 library(tibble)
+library(forcats)
 
 
 # Loading DBPM climate and fishing inputs ---------------------------------
@@ -451,19 +452,64 @@ for(f in fao_lme){
 }
 
 
-# Binding all search volumes together within a single region
-density_growth_global <- density_growth_global |> 
-  bind_rows(density_growth_df)
+# Binding all search volume results together for the entire world
+global_success <- fao_lme |> 
+  map(\(x) list.files(file.path(out_folder, x, "equilibrium_run"), 
+                      "successful", full.names = T) |> 
+        read_parquet()) |> 
+  bind_rows()
 
-density_growth_global |> 
-  write_parquet(file.path(out_folder, 
-                          "successful_runs_inputs-outputs_global.parquet"))
+# Save all results
+global_success |> 
+  write_parquet(file.path(
+    out_folder, "successful_equilibrium_runs_inputs-outputs_global.parquet"))
 
+# Save inputs only
+global_in <- global_success |> 
+  select(region, region_name, area_m2:depth) |> 
+  distinct() 
 
-# density_growth_global |> 
-#   summarise(min_sv = min(search_vol), max_sv = max(search_vol), .by = region)
+global_in |>
+  write_parquet(file.path(out_folder, "equilibrium_runs_inputs_global.parquet"))
+
+# Save max and minimum search volume values resulting in successful runs
+min_max_sv <- global_success |> 
+  summarise(min_sv = min(search_vol), max_sv = max(search_vol), 
+            .by = c(region, region_name)) 
+
+min_max_sv |> 
+  write_parquet(file.path(
+    out_folder, "successful_equilibrium_runs_searchvol_global.parquet"))
+
+plot_global_data <- min_max_sv |> 
+  left_join(global_in)
   
 
+p1 <- plot_global_data |> 
+  ggplot(aes(max_sv, fct_reorder(region, tos), fill = intercept))+
+  geom_tile()+
+  theme_bw()+
+  labs(x = "maximum search volume",
+       y = "ordered from warmest at the top to coolest at bottom (tos)",
+       title = "")+
+  scale_fill_viridis_c() 
 
 
+ggsave(file.path(out_folder, 
+                 "successful_equilibrium_runs_searchvol_global.png"), p1, 
+       scale = 1.5, bg = "white")
 
+
+p2 <- plot_global_data |> 
+  ggplot(aes(max_sv, fct_reorder(region, tos), fill = intercept))+
+  geom_tile()+
+  theme_bw()+
+  labs(x = "maximum search volume",
+       y = "ordered from warmest at the top to coolest at bottom (tos)",
+       title = "")+
+  scale_fill_viridis_c() 
+
+
+ggsave(file.path(out_folder, 
+                 "successful_equilibrium_runs_searchvol_global_int-ordered.png"), 
+       p2, scale = 1.5, bg = "white")
