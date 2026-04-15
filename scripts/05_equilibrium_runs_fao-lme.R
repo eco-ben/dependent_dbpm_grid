@@ -155,10 +155,50 @@ for(f in fao_lme){
   
   print(paste0("Running DBPM for region: ", f))
   
+  ## Biomass plots --------------------------------------------------------
+  # Loading data
+  bio_df <- list.files(results_folder, 
+                       "plankton-pred-detritus-bio_detritus_.*parquet", 
+                       full.names = T) |> 
+    map(\(x) read_parquet(x)) |> 
+    bind_rows() |> 
+    # Removing rows with no data
+    drop_na(values) |> 
+    # Removing rows where growth rate is equal or less than 0
+    filter(values >= 0) 
+  
+  good_search_vol <- bio_df |> 
+    filter(group != "plankton") |> 
+    count(search_vol) |> 
+    # A total of 600, which includes 200 timesteps and three groups (predators,
+    # detritivores and detritus)
+    filter(n == 600) 
+  
+  # Plotting data for entire simulation
+  bio_fig <- bio_df |> 
+    filter(search_vol %in% good_search_vol$search_vol) |> 
+    ggplot(aes(year, values, colour = factor(search_vol), 
+               group = search_vol))+
+    geom_line(alpha = 0.5)+
+    facet_grid(group~., scales = "free")+
+    labs(colour = "Search volume", 
+         title = paste0("Last simulated decade: Estimated biomass per group - ",
+                        str_to_upper(str_replace_all(f, "_|-", " "))))+
+    theme_bw()+
+    theme(axis.title = element_blank())
+  
+  # Saving plot
+  ggsave(file.path(results_folder,
+                   paste0("plankton-pred-detritus-bio_detritus_", f, 
+                          "_searchvol-check", ".png")),
+         bio_fig, bg = "white")
+  
   ## Size spectrum plots --------------------------------------------------
   # Loading data
-  density_df <- list.files(results_folder, pattern = "size_spectrum_data_", 
-                           full.names = T) |> 
+  density_df <- list.files(
+    results_folder, pattern = paste0("size_spectrum_data.*", 
+                                     good_search_vol$search_vol, 
+                                     collapse = "|"), full.names = T) |> 
     map(\(x) read_parquet(x)) |> 
     bind_rows() |> 
     # Removing rows with no data
@@ -186,8 +226,10 @@ for(f in fao_lme){
   
   ## Growth rate plots ----------------------------------------------------
   # Loading data
-  growth_df <- list.files(results_folder, pattern = "growth_rates_data", 
-                          full.names = T) |> 
+  growth_df <- list.files(
+    results_folder, pattern = paste0("growth_rates_data.*", 
+                                    good_search_vol$search_vol, 
+                                    collapse = "|"), full.names = T) |> 
     map(\(x) read_parquet(x)) |> 
     bind_rows() |> 
     # Removing rows with no data
@@ -214,43 +256,6 @@ for(f in fao_lme){
   ggsave(file.path(results_folder,
                    paste0("growth_rates_", f, "_searchvol-check", ".png")),
          growth_fig, bg = "white")
-  
-  ## Biomass plots --------------------------------------------------------
-  # Loading data
-  bio_df <- list.files(results_folder, "plankton-pred-detritus-bio_detritus_", 
-                       full.names = T) |> 
-    map(\(x) read_parquet(x)) |> 
-    bind_rows() |> 
-    # Removing rows with no data
-    drop_na(values) |> 
-    # Removing rows where growth rate is equal or less than 0
-    filter(values >= 0) 
-  
-  good_search_vol <- bio_df |> 
-    filter(group != "plankton") |> 
-    count(search_vol) |> 
-    # A total of 600, which includes 200 timesteps and three groups (predators,
-    # detritivores and detritus)
-    filter(n == 600) 
-  
-  # Plotting data for entire simulation
-  bio_fig <- bio_df |> 
-    filter(search_vol %in% good_search_vol$search_vol) |> 
-    ggplot(aes(year, values, colour = factor(search_vol), 
-               group = search_vol))+
-    geom_line(alpha = 0.5)+
-    facet_grid(group~., scales = "free")+
-    labs(colour = "Search volume", 
-         title = paste0("Last decade of simulation: Estimated biomass per group - ",
-                        str_to_upper(str_replace_all(f, "_|-", " "))))+
-    theme_bw()+
-    theme(axis.title = element_blank())
-  
-  # Saving plot
-  ggsave(file.path(results_folder,
-                   paste0("plankton-pred-detritus-bio_detritus_", f, 
-                          "_searchvol-check", ".png")),
-         bio_fig, bg = "white")
 }
 
 
@@ -289,30 +294,30 @@ for(f in fao_lme){
     filter(n == 600) 
   
   # Get files for successful runs only
-  init_files <- list.files(results_folder, 
-                           pattern = paste(
-                             paste0("^init_dbpm.*_", good_search_vol$search_vol, 
-                                    ".json"), collapse = "|"), full.names = T)
+  init_files <- list.files(
+    results_folder, 
+    pattern = paste0("^init_dbpm.*_", good_search_vol$search_vol, ".json", 
+                     collapse = "|"), full.names = T)
   
-  
+  # Creating empty tibble to store global results
   density_growth_reg <- tibble()
   
   for(fn in init_files){
     init_results <- read_json(fn, simplifyVector = T)
     
-    min_pred_size <- init_results$params$log10_size_bins[
-      init_results$params$ind_min_pred_size]
-    min_det_size <- init_results$params$log10_size_bins[
-      init_results$params$ind_min_detritivore_size]
+    min_pred_size <- init_results$params$min_log10_pred
+    min_det_size <- init_results$params$min_log10_detritivore
+    
+    total_ts <- init_results$params$numb_time_steps
     
     # Processing density data for size spectrum
     density_growth_df <- data.frame(
       size_class = init_results$params$log10_size_bins, 
-      pred_den = init_results$predators[, ncol(init_results$predators)], 
-      detrit_den = init_results$detritivores[, ncol(init_results$detritivores)],
+      pred_den = init_results$predators[,total_ts], 
+      detrit_den = init_results$detritivores[,total_ts],
       # Growth from time step before end of simulation
-      pred_growth = init_results$growth_int_pred[, ncol(init_results$growth_int_pred)-1], 
-      detrit_growth = init_results$growth_det[, ncol(init_results$growth_det)-1], 
+      pred_growth = init_results$growth_int_pred[,total_ts-1], 
+      detrit_growth = init_results$growth_det[,total_ts-1], 
       search_vol = init_results$params$hr_volume_search) |> 
       mutate(size_class_g = 10**size_class, .before = pred_growth) |>
       mutate(pred_den = ifelse(size_class < min_pred_size, NA, pred_den),
@@ -373,7 +378,7 @@ min_max_sv |>
 plot_global_data <- min_max_sv |> 
   left_join(global_in)
   
-
+# Maximum search volume values leading to successful runs
 p1 <- plot_global_data |> 
   ggplot(aes(max_sv, fct_reorder(region, tos), fill = intercept))+
   geom_tile()+
@@ -403,45 +408,25 @@ ggsave(file.path(out_folder,
 
 
 
-
 # Dynamic equilibrium run for the Arctic ----------------------------------
 f <- "fao_lme-64"
 
-dbpm_inputs <- read_parquet(list.files(
-  file.path(base_folder, f, paste0("monthly_weighted", smoothed)), 
-  paste0("dbpm_clim-fish-inputs", fn_search, "_", f), full.names = T))
-
-
-dyn_spinup <- dbpm_inputs |> 
-  filter(scenario == "spinup") |> 
-  group_by(month) |> 
-  summarise(across(where(is.double) & !c(year, time), ~ mean(.x, na.rm = T))) |> 
-  mutate(month = factor(month, levels = month.name, ordered = T)) |> 
-  arrange(month) |> 
-  replicate(200, expr = _, simplify = F) |> 
-  bind_rows() |> 
-  mutate(scenario = "stable-spin", region = unique(dbpm_inputs$region),
-         region_name = unique(dbpm_inputs$region_name),
-         time = seq(as_date("1641-01-01"), as_date("1840-12-31"), 
-                    by = "month"), year = year(time), .before = month)
+dbpm_inputs <- read_parquet(
+  file.path(base_folder, f, paste0("monthly_weighted", smoothed),
+            paste0("dbpm_dynamic_clim-fish-inputs", fn_search, "_", f, 
+                   "_1641-2010.parquet"))) |> 
+  filter(scenario == "stable-spin")
 
 results_folder <- file.path(out_folder, f, "dynamic_equilibrium_run")
 
-# If the folder does not exist, create a new one
-if(!dir.exists(results_folder)){
-  dir.create(results_folder, recursive = T)
-}
-
 search_volume <- 12.8
 
-fish_param <- data.frame("region" = str_replace(str_to_upper(f),
-                                                "-", " "),
+fish_param <- data.frame("region" = str_replace(str_to_upper(f), "-", " "),
                          "fmort_u" = 0, "fmort_v" = 0, "fminx_u" = 0, 
                          "fminx_v" = 0, "search_vol" = search_volume)
 
-
 # Get parameters ready for calibration run
-params <- sizeparam(dyn_spinup, fish_param, xmin_consumer_u = -3,
+params <- sizeparam(dbpm_inputs, fish_param, xmin_consumer_u = -3,
                     xmin_consumer_v = -3)
 
 # Saving non-spatial parameters
@@ -451,7 +436,7 @@ params |>
                        paste0("dbpm_size_params_", f, "_searchvol_",
                               fish_param$search_vol, ".json")), digits = 10)
 
-calib_run <- run_model(fish_param, dyn_spinup, withinput = F, 
+calib_run <- run_model(fish_param, dbpm_inputs, withinput = F, 
                        xmin_consumer_u = -3, xmin_consumer_v = -3,
                        include_plankton = T)
 
@@ -465,7 +450,7 @@ calib_run |>
 
 ## Size spectrum plots per group (predators and detritivores) ---------
 # Transform density matrix to data frame to create plots
-density_df <- dbpm_output_mat_to_df(calib_run, dyn_spinup$time, "density")
+density_df <- dbpm_output_mat_to_df(calib_run, dbpm_inputs$time, "density")
 
 # Create size spectrum plots
 size_sp_plot <- plotsizespectrum(density_df, calib_run$params, f,
@@ -478,11 +463,11 @@ ggsave(file.path(results_folder, paste0("size_spectrum_", f, "_searchvol_",
        size_sp_plot, bg = "white")
 
 ## Creating growth rate plots -------------------------------------------
-dates_model <- c(min(dyn_spinup$time)%m-% months(1), dyn_spinup$time)
+dates_model <- c(min(dbpm_inputs$time)%m-% months(1), dbpm_inputs$time)
 growth_df <- dbpm_output_mat_to_df(calib_run, dates_model, "growth") |>
   # Excluding growth value for first time step as it is used for model
   # initialisation only
-  filter(time >= min(as_date(dyn_spinup$time)))
+  filter(time >= min(as_date(dbpm_inputs$time)))
 
 # Create growth rate plot
 growth_plot <- plot_growth_rate(growth_df, calib_run$params, f,
@@ -494,7 +479,7 @@ ggsave(file.path(results_folder, paste0("growth_rates_", f, "_searchvol_",
        growth_plot, bg = "white")
 
 #Equilibrium run
-equilib_run <- run_model(fish_param, dyn_spinup, withinput = T,
+equilib_run <- run_model(fish_param, dbpm_inputs, withinput = T,
                          xmin_consumer_u = -3, xmin_consumer_v = -3, 
                          include_plankton = T)
 
@@ -530,19 +515,18 @@ ggsave(file.path(results_folder,
                  paste0("pred-detritus-bio_detritus_", f, "_searchvol_",
                         fish_param$search_vol, ".png")), bio_plot, bg = "white")
 
-min_pred_size <- calib_run$params$log10_size_bins[
-  calib_run$params$ind_min_pred_size]
-min_det_size <- calib_run$params$log10_size_bins[
-  calib_run$params$ind_min_detritivore_size]
+min_pred_size <- calib_run$params$min_log10_pred
+min_det_size <- calib_run$params$min_log10_detritivore
+total_ts <- calib_run$params$numb_time_steps
 
 # Processing density data for size spectrum
 density_growth_df <- data.frame(
   size_class = calib_run$params$log10_size_bins, 
-  pred_den = calib_run$predators[, ncol(calib_run$predators)], 
-  detrit_den = calib_run$detritivores[, ncol(calib_run$detritivores)],
+  pred_den = calib_run$predators[, total_ts], 
+  detrit_den = calib_run$detritivores[, total_ts],
   # Growth from time step before end of simulation
-  pred_growth = calib_run$growth_int_pred[, ncol(calib_run$growth_int_pred)-1], 
-  detrit_growth = calib_run$growth_det[, ncol(calib_run$growth_det)-1], 
+  pred_growth = calib_run$growth_int_pred[, total_ts-1], 
+  detrit_growth = calib_run$growth_det[, total_ts-1], 
   search_vol = calib_run$params$hr_volume_search) |> 
   mutate(size_class_g = 10**size_class, .before = pred_growth) |>
   mutate(pred_den = ifelse(size_class < min_pred_size, NA, pred_den),
@@ -559,7 +543,8 @@ density_growth_df <- data.frame(
 
 size_spec_plot <- density_growth_df |>
   pivot_longer(c(pred_den, detrit_den, total), names_to = "group", 
-               values_to = "bio") |> ggplot(aes(size_class, bio, colour = group, linetype = group))+
+               values_to = "bio") |> 
+  ggplot(aes(size_class, bio, colour = group, linetype = group))+
   geom_line(alpha = 0.5)+
   scale_colour_manual(values = c("#1b9e77", "#d95f02", "#7570b3"))+
   scale_linetype_manual(values = c(2, 6, 1))+
@@ -614,9 +599,9 @@ ggsave(file.path(results_folder,
        bg = "white")
 
 
-pred_initial <- calib_run$predators[,ncol(calib_run$predators)]/calib_run$params$depth
-detritivore_initial <- calib_run$detritivores[,ncol(calib_run$detritivores)]/20
-detritus_initial <- calib_run$detritus[length(calib_run$detritus)]
+pred_initial <- calib_run$predators[,total_ts]/calib_run$params$depth
+detritivore_initial <- calib_run$detritivores[,total_ts]/20
+detritus_initial <- calib_run$detritus[total_ts]
 
 calib_run_restart <- run_model(fish_param, 
                                dbpm_inputs[dbpm_inputs$year >= 1841,], 
@@ -644,9 +629,9 @@ ggsave(file.path(results_folder,
        bg = "white")
 
 # Create size spectrum plots
-size_sp_last <- plotsizespectrum(density_df[density_df$time == max(density_df$time),], 
-                                 calib_run_restart$params, f, 
-                                 fishing_params = fish_param, mean_decade = F)
+size_sp_last <- plotsizespectrum(
+  density_df[density_df$time == max(density_df$time),], 
+  calib_run_restart$params, f, fishing_params = fish_param, mean_decade = F)
 
 # Saving size spectrum plot for non-spatial runs
 ggsave(file.path(results_folder, 
@@ -738,6 +723,6 @@ bio_plot <- biomass_data |>
   theme(axis.title.x = element_blank())
 
 ggsave(file.path(results_folder,
-                 paste0("pred-detritus-bio_detritus-noplankton_", f, "_searchvol_",
-                        fish_param$search_vol, "1841-2010.png")), bio_plot, 
-       bg = "white")
+                 paste0("pred-detritus-bio_detritus-noplankton_", f, 
+                        "_searchvol_", fish_param$search_vol, "1841-2010.png")),
+       bio_plot, bg = "white")
