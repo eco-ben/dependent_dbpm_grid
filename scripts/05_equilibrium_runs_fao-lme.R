@@ -70,16 +70,13 @@ for(f in fao_lme){
   future_walk(1:nrow(fish_param), ~{
     i <- .x
     # Get parameters ready for calibration run
-    params <- sizeparam(dbpm_inputs, fish_param[i,], xmin_consumer_u = -3,
-                        xmin_consumer_v = -3)
-
-    # Saving non-spatial parameters
-    params |>
+    sizeparam(dbpm_inputs, fish_param[i,], xmin_consumer_u = -3,
+              xmin_consumer_v = -3) |>
       #Ensuring up to 10 decimal places are saved in file
-      write_json(file.path(results_folder,
-                           paste0("dbpm_size_params_", f, "_searchvol_",
-                                  fish_param[i,]$search_vol, ".json")),
-                 digits = 10)
+      write_json(
+        file.path(results_folder,
+                  paste0("dbpm_size_params_", f, "_searchvol_",
+                         fish_param[i,]$search_vol, ".json")), digits = 10)
 
     # Run non-spatial DBPM.  This step is necessary to get the initial
     # conditions to be used in the gridded DBPM
@@ -90,178 +87,65 @@ for(f in fao_lme){
     # Saving initial results for non-spatial run
     init_results |>
       #Ensuring up to 10 decimal places are saved in file
-      write_json(file.path(results_folder,
-                           paste0("init_dbpm_nonspatial_", f, "_searchvol_",
-                                  fish_param[i,]$search_vol, ".json")),
-                 digits = 10)
+      write_json(file.path(
+        results_folder, paste0("init_dbpm_nonspatial_", f, "_searchvol_",
+                               fish_param[i,]$search_vol, ".json")), 
+        digits = 10)
 
     ## Size spectrum plots per group (predators and detritivores) ---------
     # Transform density matrix to data frame to create plots
     density_df <- dbpm_output_mat_to_df(init_results, dbpm_inputs$time, 
                                         "density")
     
-    density_df |> 
-      write_parquet(file.path(
-        results_folder, paste0("density_data_", f, "_searchvol_",
-                               fish_param[i,]$search_vol, ".parquet")))
-
-    # Create size spectrum plots
-    size_sp_plot <- plotsizespectrum(density_df, init_results$params, f,
-                                     fishing_params = fish_param[i,],
-                                     mean_decade = T, nrow = 3)
-
-    # Saving size spectrum plot for non-spatial runs
-    ggsave(file.path(results_folder,
-                     paste0("size_spectrum_", f, "_searchvol_",
-                            fish_param[i,]$search_vol, ".png")),
-           size_sp_plot, bg = "white")
+    den_data <- plotsizespectrum(density_df, init_results$params, f, 
+                                 fishing_params = fish_param[i,], 
+                                 mean_decade = T, return_data = T)
+    
+    write_parquet(den_data$data, file.path(
+      results_folder, paste0("size_spectrum_data_", f, "_searchvol_",
+                             fish_param[i,]$search_vol, ".parquet")))
     
     
-    
-
     ## Creating growth rate plots -------------------------------------------
     dates_model <- c(min(dbpm_inputs$time)%m-% months(1), dbpm_inputs$time)
     growth_df <- dbpm_output_mat_to_df(init_results, dates_model, "growth") |>
       # Excluding growth value for first time step as it is used for model
       # initialisation only
-      filter(time >= min(as_date(dbpm_inputs$time)))
-
-
-    # Create growth rate plot
-    growth_plot <- plot_growth_rate(growth_df, init_results$params, f,
-                                    fishing_params = fish_param[i,])
-
-    # Saving size spectrum plot for non-spatial runs
-    ggsave(file.path(results_folder,
-                     paste0("growth_rates_", f, "_searchvol_",
-                            fish_param[i,]$search_vol, ".png")),
-           growth_plot, bg = "white")
-
+      filter(time >= min(as_date(dbpm_inputs$time))) 
+    
+    plot_growth_rate(growth_df, init_results$params, f,
+                     fishing_params = fish_param[i,], return_data = T) |> 
+      write_parquet(file.path(
+        results_folder, paste0("growth_rates_data", f, "_searchvol_",
+                               fish_param[i,]$search_vol, ".parquet")))
+    
     #Equilibrium run
     calib_run <- run_model(fish_param[i,], dbpm_inputs, xmin_consumer_u = -3,
                            xmin_consumer_v = -3, include_plankton = T)
 
     # Save results
-    calib_run |>
-      write_parquet(file.path(
-        results_folder, paste0("dbpm_nonspatial_", f, "_searchvol_",
-                                fish_param[i,]$search_vol, "_1801-2000.parquet"))
-      )
+    calib_run |> 
+      write_parquet(
+        file.path(results_folder, 
+                  paste0("dbpm_nonspatial_", f, "_searchvol_", 
+                         fish_param[i,]$search_vol, "_1641-1840.parquet")))
 
     # Create plots of biomass (predators, detritivores and detritus)
-    biomass_data <- calib_run |>
+    calib_run |>
       select(year, ends_with("biomass"), total_detritus) |>
       group_by(year) |>
-      summarise(across(starts_with("total"), ~ mean(.x, na.rm = T)))
-
-    bio_plot <- biomass_data |>
-      pivot_longer(!year, names_to = "group", values_to = "values",
-                   names_prefix = "total_") |>
-      # separate(group, c("group", "type"), sep = "_", fill = "right") |>
-      separate_wider_delim(group, delim = "_", names = c("group", "type"),
-                           too_few = "align_start") |>
-      replace_na(list(type = "detritus")) |>
-      ggplot(aes(x = year, y = values, color = group))+
-      geom_line()+
-      geom_point()+
-      facet_grid(type~., scales = "free")+
-      labs(title =
-             paste0(str_replace_all(str_to_upper(f), "_|-", " "),
-                    ": Predator and detritivore biomass, and detritus density"))+
-      theme_bw()+
-      theme(axis.title.x = element_blank())
-
-    ggsave(file.path(results_folder,
-                     paste0("pred-detritus-bio_detritus_", f, "_searchvol_",
-                            fish_param[i,]$search_vol, ".png")), bio_plot,
-           bg = "white")
-  }, .options = furrr_options(seed = T))
-}
-
-
-
-# Processing outputs per region -------------------------------------------
-plan(multisession, workers = availableCores())
-for(f in fao_lme){
-  results_folder <- file.path(out_folder, f, "equilibrium_run")
-  
-  init_files <- list.files(results_folder, pattern = "^init_dbpm", 
-                           full.names = T)
-  
-  calib_files <- list.files(results_folder, pattern = "^dbpm_nonspatial_", 
-                           full.names = T)
-  
-  print(paste0("Running DBPM for region: ", f))
-  
-  # Parallelising output processing within regions of interest
-  future_walk(1:length(init_files), ~{
-    i <- .x
-    init_results <- read_json(init_files[i], simplifyVector = T)
-    calib_run <- read_parquet(calib_files[i]) |> 
-      select(time, year, ends_with("biomass"), total_detritus)
-    min_pred_size <- init_results$params$log10_size_bins[
-      init_results$params$ind_min_pred_size]
-    min_det_size <- init_results$params$log10_size_bins[
-      init_results$params$ind_min_detritivore_size]
-    
-    # Processing density data
-    density_df <- dbpm_output_mat_to_df(init_results, calib_run$time, 
-                                        "density") |> 
-      select(!detritus) |> 
-      mutate(predators = ifelse(size_class < min_pred_size, NA, predators),
-             detritivores = ifelse(size_class < min_det_size, NA, 
-                                   detritivores)) |> 
-      drop_na(detritivores, predators) |> 
-      rowwise() |> 
-      mutate(total = sum(predators, detritivores, na.rm = T)) |>
-      ungroup() |> 
-      summarise(across(c(predators, detritivores, total), 
-                       ~ mean(.x, na.rm = T)), 
-                .by = c(decade, size_class, search_vol)) |> 
-      mutate(across(c(predators, detritivores, total), log10)) |>
-      pivot_longer(c(predators, detritivores, total), names_to = "group", 
-                   values_to = "bio")
-    density_df |> 
-      write_parquet(file.path(results_folder,
-                              paste0("size_spectrum_data_", f, "_searchvol_",
-                                     unique(density_df$search_vol), ".parquet")))
-   
-    # Processing growth rate data
-    dates_model <- c(min(calib_run$time)%m-% months(1), calib_run$time)
-    growth_df <- dbpm_output_mat_to_df(init_results, dates_model, "growth") |>
-      mutate(size_class = 10**size_class) |>
-      # Excluding growth value for first time step as it is used for model
-      # initialisation only
-      filter(time >= min(as_date(calib_run$time)) & size_class >= 0.1 & 
-               size_class <= 10**5) |> 
-      summarise(across(c(predators, detritivores), ~ mean(.x, na.rm = T)),
-                .by = c(decade, size_class, search_vol)) |> 
-      pivot_longer(c(predators, detritivores), names_to = "group", 
-                   values_to = "growth")
-    
-    growth_df |> 
-      write_parquet(file.path(results_folder,
-                              paste0("growth_rates_data", f, "_searchvol_",
-                                     unique(growth_df$search_vol), ".parquet")))
-  
-    # Processing biomass data
-    biomass_data <- calib_run |>
-      summarise(across(starts_with("total"), ~ mean(.x, na.rm = T)), 
-                .by = year) |>
+      summarise(across(starts_with("total"), ~ mean(.x, na.rm = T))) |> 
       pivot_longer(!year, names_to = "group", values_to = "values",
                    names_prefix = "total_") |>
       separate_wider_delim(group, delim = "_", names = c("group", "type"),
                            too_few = "align_start") |>
       replace_na(list(type = "detritus")) |> 
-      mutate(search_vol = unique(density_df$search_vol))
-    
-    biomass_data |> 
+      mutate(search_vol = fish_param[i,]$search_vol) |> 
       write_parquet(file.path(
         results_folder, paste0("plankton-pred-detritus-bio_detritus_", f, 
-                               "_searchvol_", unique(density_df$search_vol), 
+                               "_searchvol_", fish_param[i,]$search_vol, 
                                ".parquet")))
-    }
-  )
+  }, .options = furrr_options(seed = T))
 }
 
 
@@ -368,7 +252,6 @@ for(f in fao_lme){
                           "_searchvol-check", ".png")),
          bio_fig, bg = "white")
 }
-
 
 
 # Creating diagnostic plots per region for final timestep -----------------
