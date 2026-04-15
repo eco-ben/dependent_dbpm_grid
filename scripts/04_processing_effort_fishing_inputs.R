@@ -140,6 +140,36 @@ for(f in fao_lme){
            depth = ifelse(is.na(depth_m), mean(depth_m, na.rm = T), depth_m)) |> 
     rename(area_m2 = tot_area_m2) |> 
     select(!depth_m)
+  
+  ## Dynamic stable spinup period for the Arctic only -----------------------
+  if(fao_lme_id == 64){
+    spinup <- list.files(forcing_folder, pattern = "spinup", full.names = T) |> 
+      read_parquet()
+    
+    dyn_spinup <- spinup |> 
+      group_by(month) |> 
+      summarise(across(where(is.double) & !c(year, time), 
+                       ~ mean(.x, na.rm = T))) |> 
+      mutate(month = factor(month, levels = month.name, ordered = T)) |> 
+      arrange(month) |> 
+      replicate(200, expr = _, simplify = F) |> 
+      bind_rows() |> 
+      mutate(region = str_replace(str_to_upper(f), "-", " "), 
+             scenario = "stable-spin", 
+             time = seq(as_date("1641-01-01"), as_date("1840-12-31"), 
+                        by = "month"), year = year(time), .before = month)
+    
+    clim_forcing_file <- list.files(forcing_folder, pattern = "obsclim",
+                                    full.names = T) |> 
+      read_parquet() |> 
+      bind_rows(dyn_spinup, spinup) |> 
+      arrange(time) |> 
+      clean_names() |> 
+      mutate(time = as_date(time),
+             depth = ifelse(is.na(depth_m), mean(depth_m, na.rm = T), depth_m)) |> 
+      rename(area_m2 = tot_area_m2) |> 
+      select(!depth_m)
+  }
     
   # Getting the mean depth and area of the region of interest
   depth_area <- clim_forcing_file |> 
@@ -285,6 +315,11 @@ for(f in fao_lme){
   fout_forcing <- paste0("dbpm_clim-fish-inputs", fn_search, "_", f, "_", 
                          min(forcing_file$year), "-", max(forcing_file$year),
                          ".parquet")
+  if(fao_lme_id == 64){
+    fout_forcing <- paste0("dbpm_dynamic_clim-fish-inputs", fn_search, "_", f, 
+                           "_", min(forcing_file$year), "-", 
+                           max(forcing_file$year), ".parquet")
+  }
   
   forcing_file |> 
     write_parquet(file.path(forcing_folder, fout_forcing))
