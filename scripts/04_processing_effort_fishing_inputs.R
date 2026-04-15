@@ -1,8 +1,8 @@
 # Processing fishing and effort inputs for Dynamic Benthic-Pelagic Size 
 # Spectrum Model (DBPM)
 
-# Choose local R library
-# .libPaths("/g/data/vf71/la6889/R_personal_lib/")
+# Activate local R library
+.libPaths("/g/data/vf71/la6889/R_personal_lib/")
 
 # Loading libraries -------------------------------------------------------
 library(dplyr)
