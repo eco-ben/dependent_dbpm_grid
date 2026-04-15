@@ -79,7 +79,8 @@ ss_catches_summ <- ss_catches |>
   left_join(lme_names, by = c("area"="fao_lme")) |> 
   group_by(year, area, corrected_name) |> 
   summarise(min_fished_weight_class = min(log10mid_wt, na.rm = T),
-            max_fished_weight_class = max(log10mid_wt, na.rm = T), .groups = "drop") |> 
+            max_fished_weight_class = max(log10mid_wt, na.rm = T), 
+            .groups = "drop") |> 
   mutate(region = case_when(area < 100 ~ paste0("LME ", area),
                             .default = paste0("FAO ", area)), .after = year) |> 
   rename(region_name = corrected_name) 
@@ -165,8 +166,9 @@ for(f in fao_lme){
       bind_rows(dyn_spinup, spinup) |> 
       arrange(time) |> 
       clean_names() |> 
-      mutate(time = as_date(time),
-             depth = ifelse(is.na(depth_m), mean(depth_m, na.rm = T), depth_m)) |> 
+      mutate(time = as_date(time), 
+             depth = ifelse(is.na(depth_m), mean(depth_m, na.rm = T),
+                            depth_m)) |> 
       rename(area_m2 = tot_area_m2) |> 
       select(!depth_m)
   }
