@@ -343,7 +343,8 @@ gravitymodel <- function(effort, prop_b, depth, iter){
   
 # Run model per grid cell or averaged over an area ------
 sizemodel <- function(params, temp_effect = T, use_init = F, 
-                      benthic_habitat_depth = 20, detritus_input = NULL){
+                      benthic_habitat_depth = 20, detritus_input = NULL, 
+                      set_plankton = FALSE){
   with(params,{
     # - benthic_habitat_depth (numeric) - Default is 20 meters. This refers to 
     # the thickness of vertical habitat for the benthic group. This should be
@@ -351,6 +352,9 @@ sizemodel <- function(params, temp_effect = T, use_init = F,
     # (see line 78)
     # - detritus_input (numeric). Optional. Default is NULL. Detritus input used 
     #   to calculate detritus biomass
+    # - set_plankton (boolean). Default is FALSE. If TRUE, it uses the values
+    #   provided in the 'init_pred' parameter that are smaller than the minimum
+    #   predator size
     # Model for a dynamical ecosystem comprised of: two functionally distinct 
     # size spectra (predators and detritivores), size structured primary 
     # producers and an unstructured detritus resource pool. 
@@ -464,7 +468,14 @@ sizemodel <- function(params, temp_effect = T, use_init = F,
     #continuation of plankton hold constant
     predators[1:(ind_min_pred_size-1), 2:(numb_time_steps+1)] <- 
       (ui0*10^(slope_phy_zoo_mat*log10_size_bins_mat))[1:(ind_min_pred_size-1),]
-    predators[,1] <- predators[,2]
+    if(set_plankton == T){
+      # set (phyto+zoo)plankton size spectrum from previous run
+      predators[1:(ind_min_pred_size-1), 1] <- init_pred[1:(ind_min_pred_size-1)]
+    }else{
+      predators[1:(ind_min_pred_size-1), 1] <- predators[1:(ind_min_pred_size-1), 2]
+    }
+    
+    # set initial consumer size spectrum 
     predators[ind_min_pred_size:120, 1] <- 
       init_pred[ind_min_pred_size:120]
     
@@ -475,8 +486,7 @@ sizemodel <- function(params, temp_effect = T, use_init = F,
     detritivores[ind_min_detritivore_size:120, 1] <- 
       init_detritivores[ind_min_detritivore_size:120]
     
-    
-    if(use_init){
+    if(use_init == T){
       # set initial consumer size spectrum from previous run
       predators[ind_min_pred_size:numb_size_bins, 1] <- 
         init_pred[ind_min_pred_size:numb_size_bins]
@@ -484,6 +494,7 @@ sizemodel <- function(params, temp_effect = T, use_init = F,
       detritivores[ind_min_detritivore_size:numb_size_bins, 1] <- 
         init_detritivores[ind_min_detritivore_size:numb_size_bins] 
     }
+    
     
     #other (intrinsic) natural mortality (OM.u, OM.v)
     other_mort_det <- other_mort_pred <- 
@@ -707,7 +718,6 @@ sizemodel <- function(params, temp_effect = T, use_init = F,
       Bi_u[ind_min_pred_size] <- 1
       Si_u[ind_min_pred_size] <- predators[ind_min_pred_size, i]
       
-      # apply transfer efficiency of 10% *plankton density at same size
       # reproduction from energy allocation
       if(dynamic_reproduction){
         predators[ind_min_pred_size, i+1] <- predators[ind_min_pred_size, i]+
@@ -773,7 +783,7 @@ sizemodel <- function(params, temp_effect = T, use_init = F,
     #end time iteration
     
     # Depth correction to be applied to pelagic predator outputs (biomass and
-    # catches) to ensure these outputs are in units of g m-3 and g m-3 yr-1
+    # catches) to ensure these outputs are in units of g m-3 and g m-2 yr-1
     depth_corr <- min(depth, 200)
     # Detritivores outputs are multiplied by benthic habitat depth (see new
     # parameter in `sizemodel` function)
@@ -815,21 +825,29 @@ sizemodel <- function(params, temp_effect = T, use_init = F,
 # Running model with time series ----
 run_model <- function(fishing_params, dbpm_inputs, withinput = TRUE, 
                       xmin_consumer_u = -3, xmin_consumer_v = -3, 
-                      include_plankton = FALSE, ...){
+                      include_plankton = FALSE, pred_initial = NULL, 
+                      detritivore_initial = NULL, detritus_initial = NULL,
+                      ...){
   #Inputs:
-  # fishing_params (list) - Fishing parameters produced by the `sizeparam` 
-  # function
-  # dbpm_inputs (data frame) - Climate and fishing forcing data produced in
-  # script 03_processing_effort_fishing_inputs.R
-  # withinput (boolean) - Default is TRUE. ????
-  # xmin_consumer_u (integer) - Default is -3. This is the minimum body size 
-  # in grams for predators. This parameter represents the exponent using a 
-  # base of 10. When using default value -3, this means the minimum size for 
-  # predators is 10^(-3) or 0.001 g.
-  # xmin_consumer_v (integer) - Default is -3. This is the minimum body size 
-  # in grams for detritivores This parameter represents the exponent using a 
-  # base of 10. When using default value -3, this means the minimum size for 
-  # detritivores is 10^(-3) or 0.001 g.
+  # - fishing_params (list) - Fishing parameters produced by the `sizeparam` 
+  #  function
+  # - dbpm_inputs (data frame) - Climate and fishing forcing data produced in
+  #  script 03_processing_effort_fishing_inputs.R
+  # - withinput (boolean) - Default is TRUE. ????
+  # - xmin_consumer_u (integer) - Default is -3. This is the minimum body size 
+  #   in grams for predators. This parameter represents the exponent using a 
+  #   base of 10. When using default value -3, this means the minimum size for 
+  #   predators is 10^(-3) or 0.001 g.
+  # - xmin_consumer_v (integer) - Default is -3. This is the minimum body size 
+  #   in grams for detritivores This parameter represents the exponent using a 
+  #   base of 10. When using default value -3, this means the minimum size for 
+  #   detritivores is 10^(-3) or 0.001 g.
+  # - pred_initial (numeric). Optional. Default is NULL. Initialisation values 
+  #   for predator biomass. 
+  # - detritivore_initial (numeric). Optional. Default is NULL. Initialisation 
+  #   values for detritivore biomass. 
+  # - detritus_initial (numeric). Optional. Default is NULL. Initialisation 
+  #   value for detritus biomass
   # '...' captures extra parameters for the `sizemodel` function
   #
   #Output:
@@ -840,14 +858,17 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = TRUE,
   
   params <- sizeparam(dbpm_inputs, fishing_params, 
                       xmin_consumer_u = xmin_consumer_u, 
-                      xmin_consumer_v = xmin_consumer_v)
+                      xmin_consumer_v = xmin_consumer_v, 
+                      pred_initial = pred_initial, 
+                      detritivore_initial = detritivore_initial, 
+                      detritus_initial = detritus_initial)
   
   # run model through time
   # TO DO IN SIZEMODEL CODE: make fishing function like one in model template
   result_set <- sizemodel(params, ...)
-  size_bins <- 10^params$log10_size_bins
   
   if(withinput){
+    size_bins <- 10^params$log10_size_bins
     lims_pred_bio <- params$ind_min_pred_size:params$numb_size_bins
     # JB:  changed inputs to m2 so no need to divide by depth here
     # Timesteps start from index 2 because the first time step contains 
@@ -885,11 +906,8 @@ run_model <- function(fishing_params, dbpm_inputs, withinput = TRUE,
         apply(result_set$predators[lims_plank_bio,]*params$log_size_increase*
                 size_bins[lims_plank_bio], 2, sum)
     }
-    
     return(dbpm_inputs)
-    
   }else{
-    
     return(result_set)
   }
 }
