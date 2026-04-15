@@ -1273,7 +1273,7 @@ dbpm_output_mat_to_df <- function(dbpm_outputs, dbpm_temporal_range,
 
 # Size spectrum plots ----
 plotsizespectrum <- function(density_df, params, region, fishing_params = NULL,
-                             mean_decade = F, nrow = 2){
+                             mean_decade = F, nrow = 2, return_data = F){
   #Inputs:
   # - density_df (data frame) - Output from the `dbpm_density_mat_to_df` 
   # function
@@ -1286,6 +1286,8 @@ plotsizespectrum <- function(density_df, params, region, fishing_params = NULL,
   # detritivore values from the last time step are plotted. If TRUE, the mean 
   # predator and detritivore values per decade are plotted
   # - nrow (integer) - Default is 2. Number of rows to be included in plot.
+  # - return_data (boolean) - Default is FALSE. If TRUE, the processed data is 
+  # returned
   #
   #Output:
   # Size spectrum plot is returned
@@ -1307,7 +1309,7 @@ plotsizespectrum <- function(density_df, params, region, fishing_params = NULL,
       drop_na(detritivores, predators)
     if(mean_decade){
       plot_data <- plot_data |> 
-        group_by(decade, size_class) |> 
+        group_by(decade, size_class, search_vol) |> 
         summarise(across(c(predators, detritivores, total), 
                          ~ mean(.x, na.rm = T))) |> 
         ungroup()
@@ -1360,14 +1362,18 @@ plotsizespectrum <- function(density_df, params, region, fishing_params = NULL,
       p1 <- plot_grid(p1, grid.arrange(tableGrob(fishing_params, rows = NULL)),
                       nrow = 2, rel_heights = c(1, 0.1))
     }
-    
-    return(p1)
+    if(return_data){
+      return(list(plot = p1, data = plot_data))
+    }else{
+      return(p1)
+    }
   })
 }
 
 
 # Growth rate plots ----
-plot_growth_rate <- function(growth_df, params, region, fishing_params = NULL){
+plot_growth_rate <- function(growth_df, params, region, fishing_params = NULL,
+                             return_data = F){
   #Inputs:
   # - growth_df (data frame) - Output from the `dbpm_density_mat_to_df` 
   # function
@@ -1376,6 +1382,8 @@ plot_growth_rate <- function(growth_df, params, region, fishing_params = NULL){
   # - region (character) - Name of region being plotted
   # - fishing_params (data frame) - Default is NULL. If provided, data frame 
   # should include fishing parameters used to initialise model
+  # - return_data (boolean) - Default is FALSE. If TRUE, the processed data is 
+  # returned
   #
   #Output:
   # Growth rate plot is returned
@@ -1385,16 +1393,15 @@ plot_growth_rate <- function(growth_df, params, region, fishing_params = NULL){
     # Prepare data for plotting - Ensure only data for fished classes is
     # included in plots
     plot_data <- growth_df |> 
-      filter(decade == max(decade, na.rm = T)) |> 
       mutate(size_class = 10**size_class) |> 
       filter(size_class >= 0.1 & size_class <= 10**5) |> 
-      group_by(size_class) |> 
+      group_by(decade, size_class, search_vol) |> 
       summarise(across(c(predators, detritivores), ~ mean(.x, na.rm = T))) |> 
       ungroup() |>
       pivot_longer(c(predators, detritivores), names_to = "group", 
                    values_to = "growth")
     
-    # Create size spectrum plot
+    # Plot growth
     p1 <- plot_data |> 
       ggplot(aes(size_class, growth, colour = group))+
       geom_line()+
@@ -1416,8 +1423,11 @@ plot_growth_rate <- function(growth_df, params, region, fishing_params = NULL){
       p1 <- plot_grid(p1, grid.arrange(tableGrob(fishing_params, rows = NULL)),
                       nrow = 2, rel_heights = c(1, 0.1))
     }
-    
-    return(p1)
+    if(return_data){
+      return(list(plot = p1, data = plot_data))
+    }else{
+      return(p1)
+    }
   })
 }
 
