@@ -1,4 +1,4 @@
-# Equilibrium runs
+# Equilibrium no-fishing runs to find best search volume for all LME-FAO regions
 
 # Choose local R library
 .libPaths("/g/data/vf71/la6889/R_personal_lib/")
@@ -34,31 +34,17 @@ if(!is.null(smoothed)){
   smoothed <- ""
 }
 
-# Testing no-fishing and search volume from 0.64 to 640
+# Testing no-fishing and search volume values between 0.64 and 640
 fish_param <- data.frame("region" = NA, "fmort_u" = 0, "fmort_v" = 0,
                          "fminx_u" = 0, "fminx_v" = 0, 
                          "search_vol" = 64*seq(0.1, 10, by = 0.1))
 
-# Parallelise using workers available using parallelly
+# Parallelising runs using parallelly and furrr
 plan(multisession, workers = availableCores())
 
 # Initial calibration loop ------------------------------------------------
 for(f in fao_lme){
-  fish_param <- fish_param |> 
-    mutate(region = f)
-  
-  # Load inputs (weighted means) - We will only use 1 deg inputs to calculate 
-  # fishing parameters
-  dbpm_inputs <- read_parquet(list.files(
-    file.path(base_folder, f, paste0("monthly_weighted", smoothed)), 
-    paste0("dbpm_clim-fish-inputs", fn_search, "_", f), full.names = T)) |> 
-    filter(str_detect(scenario, "stable")) |> 
-    replicate(2, expr = _, simplify = F) |> 
-    bind_rows() |> 
-    mutate(time = seq(as_date("1801-01-01"), as_date("2000-12-31"), 
-                      by = "month"), 
-           year = year(time), month = month(time, label = T, abbr = F))
-  
+  # Define results folder
   results_folder <- file.path(out_folder, f, "equilibrium_run")
   
   # If the folder does not exist, create a new one
@@ -66,6 +52,18 @@ for(f in fao_lme){
     dir.create(results_folder, recursive = T)
   }
   
+  # Add region name to variable with fishing parameterss
+  fish_param <- fish_param |> 
+    mutate(region = f)
+  
+  # Load inputs - using stable spin-up scenario only
+  dbpm_inputs <- read_parquet(
+    file.path(base_folder, f, paste0("monthly_weighted", smoothed),
+              paste0("dbpm_clim-fish-inputs", fn_search, "_", f, 
+                     "_1641-2010.parquet"))) |> 
+    filter(str_detect(scenario, "stable")) 
+  
+  # Print message to console to keep track of region being processed
   print(paste0("Running DBPM for region: ", f))
   
   # Parallelising equilibrium runs per region of interest
@@ -101,6 +99,11 @@ for(f in fao_lme){
     # Transform density matrix to data frame to create plots
     density_df <- dbpm_output_mat_to_df(init_results, dbpm_inputs$time, 
                                         "density")
+    
+    density_df |> 
+      write_parquet(file.path(
+        results_folder, paste0("density_data_", f, "_searchvol_",
+                               fish_param[i,]$search_vol, ".parquet")))
 
     # Create size spectrum plots
     size_sp_plot <- plotsizespectrum(density_df, init_results$params, f,
@@ -112,6 +115,9 @@ for(f in fao_lme){
                      paste0("size_spectrum_", f, "_searchvol_",
                             fish_param[i,]$search_vol, ".png")),
            size_sp_plot, bg = "white")
+    
+    
+    
 
     ## Creating growth rate plots -------------------------------------------
     dates_model <- c(min(dbpm_inputs$time)%m-% months(1), dbpm_inputs$time)
@@ -494,22 +500,361 @@ p1 <- plot_global_data |>
        title = "")+
   scale_fill_viridis_c() 
 
-
 ggsave(file.path(out_folder, 
                  "successful_equilibrium_runs_searchvol_global.png"), p1, 
        scale = 1.5, bg = "white")
 
 
 p2 <- plot_global_data |> 
-  ggplot(aes(max_sv, fct_reorder(region, tos), fill = intercept))+
+  ggplot(aes(max_sv, fct_reorder(region, intercept), fill = tos))+
   geom_tile()+
   theme_bw()+
   labs(x = "maximum search volume",
-       y = "ordered from warmest at the top to coolest at bottom (tos)",
+       y = "ordered from top to bottom from most to least productive (intercept)",
        title = "")+
   scale_fill_viridis_c() 
-
 
 ggsave(file.path(out_folder, 
                  "successful_equilibrium_runs_searchvol_global_int-ordered.png"), 
        p2, scale = 1.5, bg = "white")
+
+
+
+
+# Dynamic equilibrium run for the Arctic ----------------------------------
+f <- "fao_lme-64"
+
+dbpm_inputs <- read_parquet(list.files(
+  file.path(base_folder, f, paste0("monthly_weighted", smoothed)), 
+  paste0("dbpm_clim-fish-inputs", fn_search, "_", f), full.names = T))
+
+
+dyn_spinup <- dbpm_inputs |> 
+  filter(scenario == "spinup") |> 
+  group_by(month) |> 
+  summarise(across(where(is.double) & !c(year, time), ~ mean(.x, na.rm = T))) |> 
+  mutate(month = factor(month, levels = month.name, ordered = T)) |> 
+  arrange(month) |> 
+  replicate(200, expr = _, simplify = F) |> 
+  bind_rows() |> 
+  mutate(scenario = "stable-spin", region = unique(dbpm_inputs$region),
+         region_name = unique(dbpm_inputs$region_name),
+         time = seq(as_date("1641-01-01"), as_date("1840-12-31"), 
+                    by = "month"), year = year(time), .before = month)
+
+results_folder <- file.path(out_folder, f, "dynamic_equilibrium_run")
+
+# If the folder does not exist, create a new one
+if(!dir.exists(results_folder)){
+  dir.create(results_folder, recursive = T)
+}
+
+search_volume <- 12.8
+
+fish_param <- data.frame("region" = str_replace(str_to_upper(f),
+                                                "-", " "),
+                         "fmort_u" = 0, "fmort_v" = 0, "fminx_u" = 0, 
+                         "fminx_v" = 0, "search_vol" = search_volume)
+
+
+# Get parameters ready for calibration run
+params <- sizeparam(dyn_spinup, fish_param, xmin_consumer_u = -3,
+                    xmin_consumer_v = -3)
+
+# Saving non-spatial parameters
+params |>
+  #Ensuring up to 10 decimal places are saved in file
+  write_json(file.path(results_folder,
+                       paste0("dbpm_size_params_", f, "_searchvol_",
+                              fish_param$search_vol, ".json")), digits = 10)
+
+calib_run <- run_model(fish_param, dyn_spinup, withinput = F, 
+                       xmin_consumer_u = -3, xmin_consumer_v = -3,
+                       include_plankton = T)
+
+# Saving initial results for non-spatial run
+calib_run |>
+  #Ensuring up to 10 decimal places are saved in file
+  write_json(file.path(results_folder,
+                       paste0("init_dbpm_nonspatial_", f, "_searchvol_",
+                              fish_param$search_vol, ".json")), digits = 10)
+
+
+## Size spectrum plots per group (predators and detritivores) ---------
+# Transform density matrix to data frame to create plots
+density_df <- dbpm_output_mat_to_df(calib_run, dyn_spinup$time, "density")
+
+# Create size spectrum plots
+size_sp_plot <- plotsizespectrum(density_df, calib_run$params, f,
+                                 fishing_params = fish_param, mean_decade = T,
+                                 nrow = 3)
+
+# Saving size spectrum plot for non-spatial runs
+ggsave(file.path(results_folder, paste0("size_spectrum_", f, "_searchvol_", 
+                                        fish_param$search_vol, ".png")),
+       size_sp_plot, bg = "white")
+
+## Creating growth rate plots -------------------------------------------
+dates_model <- c(min(dyn_spinup$time)%m-% months(1), dyn_spinup$time)
+growth_df <- dbpm_output_mat_to_df(calib_run, dates_model, "growth") |>
+  # Excluding growth value for first time step as it is used for model
+  # initialisation only
+  filter(time >= min(as_date(dyn_spinup$time)))
+
+# Create growth rate plot
+growth_plot <- plot_growth_rate(growth_df, calib_run$params, f,
+                                fishing_params = fish_param)
+
+# Saving size spectrum plot for non-spatial runs
+ggsave(file.path(results_folder, paste0("growth_rates_", f, "_searchvol_",
+                                        fish_param$search_vol, ".png")),
+       growth_plot, bg = "white")
+
+#Equilibrium run
+equilib_run <- run_model(fish_param, dyn_spinup, withinput = T,
+                         xmin_consumer_u = -3, xmin_consumer_v = -3, 
+                         include_plankton = T)
+
+# Save results
+equilib_run |>
+  write_parquet(file.path(results_folder, 
+                          paste0("dbpm_nonspatial_", f, "_searchvol_",
+                                 fish_param$search_vol, "_1801-2000.parquet")))
+
+# Create plots of biomass (predators, detritivores and detritus)
+biomass_data <- equilib_run |>
+  select(year, ends_with("biomass"), total_detritus) |>
+  group_by(year) |>
+  summarise(across(starts_with("total"), ~ mean(.x, na.rm = T)))
+
+bio_plot <- biomass_data |>
+  pivot_longer(!year, names_to = "group", values_to = "values",
+               names_prefix = "total_") |>
+  separate_wider_delim(group, delim = "_", names = c("group", "type"),
+                       too_few = "align_start") |>
+  replace_na(list(type = "detritus")) |>
+  ggplot(aes(x = year, y = values, color = group))+
+  geom_line()+
+  geom_point()+
+  facet_grid(type~., scales = "free")+
+  labs(title =
+         paste0(str_replace_all(str_to_upper(f), "_|-", " "),
+                ": Predator and detritivore biomass, and detritus density"))+
+  theme_bw()+
+  theme(axis.title.x = element_blank())
+
+ggsave(file.path(results_folder,
+                 paste0("pred-detritus-bio_detritus_", f, "_searchvol_",
+                        fish_param$search_vol, ".png")), bio_plot, bg = "white")
+
+min_pred_size <- calib_run$params$log10_size_bins[
+  calib_run$params$ind_min_pred_size]
+min_det_size <- calib_run$params$log10_size_bins[
+  calib_run$params$ind_min_detritivore_size]
+
+# Processing density data for size spectrum
+density_growth_df <- data.frame(
+  size_class = calib_run$params$log10_size_bins, 
+  pred_den = calib_run$predators[, ncol(calib_run$predators)], 
+  detrit_den = calib_run$detritivores[, ncol(calib_run$detritivores)],
+  # Growth from time step before end of simulation
+  pred_growth = calib_run$growth_int_pred[, ncol(calib_run$growth_int_pred)-1], 
+  detrit_growth = calib_run$growth_det[, ncol(calib_run$growth_det)-1], 
+  search_vol = calib_run$params$hr_volume_search) |> 
+  mutate(size_class_g = 10**size_class, .before = pred_growth) |>
+  mutate(pred_den = ifelse(size_class < min_pred_size, NA, pred_den),
+         detrit_den = ifelse(size_class < min_det_size, NA, detrit_den),
+         pred_growth = ifelse(size_class < min_pred_size, NA, pred_growth),
+         detrit_growth = ifelse(size_class < min_det_size, NA, detrit_growth)) |> 
+  drop_na(pred_den:detrit_growth) |> 
+  rowwise() |> 
+  mutate(total = sum(pred_den, detrit_den, na.rm = T), 
+         .after = detrit_den) |>
+  ungroup() |> 
+  mutate(across(c(pred_den, detrit_den, total), log10)) 
+
+
+size_spec_plot <- density_growth_df |>
+  pivot_longer(c(pred_den, detrit_den, total), names_to = "group", 
+               values_to = "bio") |> ggplot(aes(size_class, bio, colour = group, linetype = group))+
+  geom_line(alpha = 0.5)+
+  scale_colour_manual(values = c("#1b9e77", "#d95f02", "#7570b3"))+
+  scale_linetype_manual(values = c(2, 6, 1))+
+  labs(colour = "Size-structured\ncommunities",
+       linetype = "Size-structured\ncommunities")+
+  theme(legend.title.position = "left",
+        legend.title = element_text(hjust = 0.5, size = 10),
+        legend.position = "top", legend.text = element_text(size = 10),
+        legend.direction = "horizontal")+
+  lims(x = c(calib_run$params$min_log10_detritivore, 
+             calib_run$params$max_log10_pred), y = c(-20, NA))+
+  labs(y = expression("" *log[10] ~ "abundance density (m"^-3* ")"),
+       x = expression("" *log[10] ~ "body mass (g)"),
+       title = paste0("Calibration (non-spatial) run - ",
+                      str_replace_all(str_to_upper(f), "_|-", " ")),
+       caption = paste0("Pelagic preference: ", 
+                        round(calib_run$params$pref_pelagic, 3),
+                        "\nBenthic preference: ", 
+                        round(calib_run$params$pref_benthos, 3)))+
+  theme_bw()+
+  theme(panel.grid.minor = element_blank(),
+        plot.caption = element_text(size = 11),
+        plot.title = element_text(hjust = 0.5, face = "bold"))
+
+ggsave(file.path(results_folder, 
+                 paste0("size_spectrum_finaltimestep_", f, "_searchvol_", 
+                        fish_param$search_vol, ".png")), size_spec_plot,
+       bg = "white")
+
+growth_rates_plot <- density_growth_df |> 
+  pivot_longer(ends_with("growth"), names_to = "group", values_to = "growth") |>
+  ggplot(aes(size_class_g, growth, colour = group))+
+  geom_line()+
+  scale_y_continuous(trans = "log10", 
+                     name = "Relative growth rate per year")+
+  scale_x_continuous(trans = "log10", name = "Body mass (g)")+
+  labs(title = paste0(str_replace_all(str_to_upper(f), "_|-", " "),
+                      ": Mean growth rate per decade"),
+       caption = paste0("Pelagic preference: ", 
+                        round(calib_run$params$pref_pelagic, 3),
+                        "\nBenthic preference: ", 
+                        round(calib_run$params$pref_benthos, 3)))+
+  facet_grid(~group, scales = "free")+
+  theme_bw()+
+  theme(panel.grid.minor = element_blank(), 
+        plot.title = element_text(hjust = 0.5, face = "bold"))
+
+# Saving size spectrum plot for non-spatial runs
+ggsave(file.path(results_folder,
+                 paste0("growth_rates_finaltimestep_", f, "_searchvol_",
+                        fish_param$search_vol, ".png")), growth_rates_plot, 
+       bg = "white")
+
+
+pred_initial <- calib_run$predators[,ncol(calib_run$predators)]/calib_run$params$depth
+detritivore_initial <- calib_run$detritivores[,ncol(calib_run$detritivores)]/20
+detritus_initial <- calib_run$detritus[length(calib_run$detritus)]
+
+calib_run_restart <- run_model(fish_param, 
+                               dbpm_inputs[dbpm_inputs$year >= 1841,], 
+                               withinput = F, xmin_consumer_u = -3,
+                               xmin_consumer_v = -3, include_plankton = T,
+                               pred_initial = pred_initial,
+                               detritivore_initial = detritivore_initial,
+                               detritus_initial = detritus_initial, 
+                               set_plankton = T, use_init = T)
+
+
+density_df <- dbpm_output_mat_to_df(calib_run_restart, 
+                                    dbpm_inputs[dbpm_inputs$year >= 1841,]$time,
+                                    "density")
+
+# Create size spectrum plots
+size_sp_plot <- plotsizespectrum(density_df, calib_run_restart$params, f,
+                                 fishing_params = fish_param, mean_decade = T,
+                                 nrow = 3)
+
+# Saving size spectrum plot for non-spatial runs
+ggsave(file.path(results_folder, 
+                 paste0("size_spectrum_", f, "_searchvol_", 
+                        fish_param$search_vol, "_1841-2010.png")), size_sp_plot, 
+       bg = "white")
+
+# Create size spectrum plots
+size_sp_last <- plotsizespectrum(density_df[density_df$time == max(density_df$time),], 
+                                 calib_run_restart$params, f, 
+                                 fishing_params = fish_param, mean_decade = F)
+
+# Saving size spectrum plot for non-spatial runs
+ggsave(file.path(results_folder, 
+                 paste0("size_spectrum_", f, "_searchvol_", 
+                        fish_param$search_vol, "_dec-2010.png")), size_sp_last, 
+       bg = "white")
+
+## Creating growth rate plots -------------------------------------------
+dates_model <- c(min(dbpm_inputs[dbpm_inputs$year >= 1841,]$time)%m-% months(1),
+                 dbpm_inputs[dbpm_inputs$year >= 1841,]$time)
+growth_df <- dbpm_output_mat_to_df(calib_run_restart, dates_model, "growth") |>
+  # Excluding growth value for first time step as it is used for model
+  # initialisation only
+  filter(time >= min(as_date(dbpm_inputs[dbpm_inputs$year >= 1841,]$time)))
+
+# Create growth rate plot
+growth_plot <- plot_growth_rate(growth_df, calib_run_restart$params, f,
+                                fishing_params = fish_param)
+
+# Saving size spectrum plot for non-spatial runs
+ggsave(file.path(results_folder, 
+                 paste0("growth_rates_", f, "_searchvol_", 
+                        fish_param$search_vol, "_1841-2010.png")), growth_plot, 
+       bg = "white")
+
+plot_data <- growth_df |> 
+  filter(time != max(time, na.rm = T)) |> 
+  filter(time == max(time, na.rm = T)) |> 
+  mutate(size_class = 10**size_class) |> 
+  filter(size_class >= 0.1 & size_class <= 10**5) |> 
+  group_by(size_class) |> 
+  summarise(across(c(predators, detritivores), ~ mean(.x, na.rm = T))) |> 
+  ungroup() |>
+  pivot_longer(c(predators, detritivores), names_to = "group", 
+               values_to = "growth")
+
+# Create size spectrum plot
+p1 <- plot_data |> 
+  ggplot(aes(size_class, growth, colour = group))+
+  geom_line()+
+  scale_y_continuous(trans = "log10", 
+                     name = "Relative growth rate per year")+
+  scale_x_continuous(trans = "log10", name = "Body mass (g)")+
+  labs(title = paste0(str_replace_all(str_to_upper(f), "_|-", " "),
+                      ": Growth rate last time step"),
+       caption = paste0("Pelagic preference: ", 
+                        round(calib_run_restart$params$pref_pelagic, 3),
+                        "\nBenthic preference: ", 
+                        round(calib_run_restart$params$pref_benthos, 3)))+
+  facet_grid(~group, scales = "free")+
+  theme_bw()+
+  theme(panel.grid.minor = element_blank(), 
+        plot.title = element_text(hjust = 0.5, face = "bold"))
+
+ggsave(file.path(results_folder, 
+                 paste0("growth_rates_", f, "_searchvol_", 
+                        fish_param$search_vol, "_dec-2010.png")), p1, 
+       bg = "white")
+
+calib_run_restart_bio <- run_model(fish_param, 
+                                   dbpm_inputs[dbpm_inputs$year >= 1841,], 
+                                   withinput = T, xmin_consumer_u = -3,
+                                   xmin_consumer_v = -3, include_plankton = T,
+                                   pred_initial = pred_initial,
+                                   detritivore_initial = detritivore_initial,
+                                   detritus_initial = detritus_initial, 
+                                   set_plankton = T, use_init = T)
+
+biomass_data <- calib_run_restart_bio |>
+  select(year, ends_with("biomass"), total_detritus) |>
+  group_by(year) |>
+  summarise(across(starts_with("total"), ~ mean(.x, na.rm = T)))
+
+bio_plot <- biomass_data |>
+  pivot_longer(!year, names_to = "group", values_to = "values",
+               names_prefix = "total_") |>
+  separate_wider_delim(group, delim = "_", names = c("group", "type"),
+                       too_few = "align_start") |>
+  filter(group != "plankton") |>
+  replace_na(list(type = "detritus")) |>
+  ggplot(aes(x = year, y = values, color = group))+
+  geom_line()+
+  geom_point()+
+  facet_grid(type~., scales = "free")+
+  labs(title =
+         paste0(str_replace_all(str_to_upper(f), "_|-", " "),
+                ": Predator and detritivore biomass, and detritus density"))+
+  theme_bw()+
+  theme(axis.title.x = element_blank())
+
+ggsave(file.path(results_folder,
+                 paste0("pred-detritus-bio_detritus-noplankton_", f, "_searchvol_",
+                        fish_param$search_vol, "1841-2010.png")), bio_plot, 
+       bg = "white")

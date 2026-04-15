@@ -1,6 +1,6 @@
 
 # Choose local R library
-# .libPaths("/g/data/vf71/la6889/R_personal_lib/")
+.libPaths("/g/data/vf71/la6889/R_personal_lib/")
 
 # Loading libraries -------------------------------------------------------
 source("scripts/useful_functions.R")
@@ -18,7 +18,7 @@ fao_lme <- list.dirs(base_folder, recursive = F, full.names = F) |>
   str_subset(pattern = "fao_lme-")
 
 # Define search volume
-search_volume <- 64
+search_volume <- 12.8
 
 # Calibration runs should include fishing?
 fishing <- F
@@ -303,7 +303,7 @@ for(f in fao){
   
   dbpm_inputs <- file.path(base_folder, f, paste0("monthly_weighted", smoothed),
                            paste0("dbpm_clim-fish-inputs", fn_search, "_", f, 
-                                  "_1841-2010.parquet")) |> 
+                                  "_1741-2010.parquet")) |> 
     read_parquet()
   
   if(fishing){
