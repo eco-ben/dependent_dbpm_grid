@@ -115,16 +115,27 @@ for(f in fao_lme){
                               paste0("monthly_weighted", smoothed))
   
   # Loading DBPM climate inputs ---------------------------------------------
+  # We will double the timesteps for the stable spinup period
+  stable_spin <- list.files(forcing_folder, pattern = "^stable-spin_dbpm",
+                            full.names = T) |> 
+    read_parquet() |> 
+    replicate(2, expr = _, simplify = F) |> 
+    bind_rows() |> 
+    mutate(time = seq(as_date("1641-01-01"), as_date("1840-12-31"), 
+                      by = "month"), 
+           year = year(time), month = month(time, label = T, abbr = F))
+    
+  
   # We will load climate inputs to merge with catch and effort data before 
   # saving results
   clim_forcing_file <- list.files(forcing_folder, 
-                                  pattern = "obsclim|spinup|stable-spin",
+                                  pattern = "obsclim|spinup",
                                   full.names = T) |>
     str_subset(paste0("inputs", fn_search, "_fao_lme")) |> 
     map(\(x) read_parquet(x)) |> 
-    bind_rows() |> 
-    clean_names() |> 
+    bind_rows(stable_spin) |>
     arrange(time) |> 
+    clean_names() |> 
     mutate(time = as_date(time),
            depth = ifelse(is.na(depth_m), mean(depth_m, na.rm = T), depth_m)) |> 
     rename(area_m2 = tot_area_m2) |> 
@@ -147,7 +158,7 @@ for(f in fao_lme){
     filter(year == 1841) |> 
     pull(total_nom_active)
   
-  effort_data <- tibble(year = seq(1741, 1840), region = fao_lme_id,
+  effort_data <- tibble(year = seq(1641, 1840), region = fao_lme_id,
                         total_nom_active = effort_stable_spin) |> 
     bind_rows(effort_data) |> 
     # Adding depth and area information for the area of interest
@@ -192,7 +203,7 @@ for(f in fao_lme){
   ss_catches_summ <- read_csv_arrow(
     file.path(fishing_folder, "effort_catch_data", 
               "summary_size_spectrum_catches_fao-lme.csv")) |> 
-    filter(area == fao_lme_id) |> 
+    filter(area == fao_lme_id & year <= 2010) |> 
     select(!c(region, area))
   
   catch_data <- catch_watson |> 
