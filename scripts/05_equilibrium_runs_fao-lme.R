@@ -648,8 +648,9 @@ growth_df <- dbpm_output_mat_to_df(calib_run_restart, dates_model, "growth") |>
   filter(time >= min(as_date(dbpm_inputs[dbpm_inputs$year >= 1841,]$time)))
 
 # Create growth rate plot
-growth_plot <- plot_growth_rate(growth_df, calib_run_restart$params, f,
-                                fishing_params = fish_param)
+growth_plot <- growth_df |> 
+  filter(decade == max(decade)) |> 
+  plot_growth_rate(calib_run_restart$params, f, fishing_params = fish_param)
 
 # Saving size spectrum plot for non-spatial runs
 ggsave(file.path(results_folder, 
