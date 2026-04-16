@@ -1,3 +1,4 @@
+# Finding best values for catchability parameter
 
 # Choose local R library
 .libPaths("/g/data/vf71/la6889/R_personal_lib/")
@@ -8,7 +9,7 @@ library(dplyr)
 library(arrow)
 library(jsonlite)
 library(purrr)
-library(GGally)
+# library(GGally)
 library(tibble)
 
 
