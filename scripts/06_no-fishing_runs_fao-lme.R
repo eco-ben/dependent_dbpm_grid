@@ -98,7 +98,7 @@ for(f in fao_lme){
   no_fishing_run |> 
     #Ensuring up to 10 decimal places are saved in file
     write_json(file.path(
-      results_folder, paste0("dbpm_no-fishing_nonspatial", end_fn)), 
+      results_folder, paste0("dbpm_no-fishing_nonspatial", end_fn, ".json")), 
       digits = 10)
   
   # Getting detritivore and predator density estimates
