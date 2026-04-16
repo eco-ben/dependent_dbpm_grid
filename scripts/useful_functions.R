@@ -1272,7 +1272,7 @@ dbpm_output_mat_to_df <- function(dbpm_outputs, dbpm_temporal_range,
 
 
 # Size spectrum plots ----
-plotsizespectrum <- function(density_df, params, region, fishing_params = NULL,
+plotsizespectrum <- function(density_df, params, region, fishing_params = NULL, 
                              mean_decade = F, nrow = 2, return_data = F){
   #Inputs:
   # - density_df (data frame) - Output from the `dbpm_density_mat_to_df` 
@@ -1292,6 +1292,7 @@ plotsizespectrum <- function(density_df, params, region, fishing_params = NULL,
   #Output:
   # Size spectrum plot is returned
   #
+  
   with(params, {
     # Get the size class fished for each group from DBPM parameters
     pred_size <- log10_size_bins[ind_min_pred_size:numb_size_bins]
@@ -1343,8 +1344,7 @@ plotsizespectrum <- function(density_df, params, region, fishing_params = NULL,
       lims(x = c(min_log10_detritivore, max_log10_pred), y = c(miny, maxy))+
       labs(y = expression("" *log[10] ~ "abundance density (m"^-3* ")"),
            x = expression("" *log[10] ~ "body mass (g)"),
-           title = paste0("Calibration (non-spatial) run - ",
-                          str_replace_all(str_to_upper(region), "-", " ")),
+           title = paste0("Calibration (non-spatial) run - ", region),
            caption = paste0("Pelagic preference: ", 
                             round(params$pref_pelagic, 3),
                             "\nBenthic preference: ", 
@@ -1408,8 +1408,7 @@ plot_growth_rate <- function(growth_df, params, region, fishing_params = NULL,
       scale_y_continuous(trans = "log10", 
                          name = "Relative growth rate per year")+
       scale_x_continuous(trans = "log10", name = "Body mass (g)")+
-      labs(title = paste0(str_replace_all(str_to_upper(region), "-", " "),
-                          ": Mean growth rate"),
+      labs(title = paste0(region, ": Mean growth rate"),
            caption = paste0("Pelagic preference: ", 
                             round(params$pref_pelagic, 3),
                             "\nBenthic preference: ", 
