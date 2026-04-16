@@ -125,7 +125,7 @@ for(f in fao_lme){
     size_sp_plot, bg = "white")
   
   ggsave(file.path(results_folder, paste0("size-spectrum-final-year", end_fn,
-                                          ".png")), size_sp_plot, bg = "white")
+                                          ".png")), size_sp_plot2, bg = "white")
   
   ## Creating growth rate plots -------------------------------------------
   dates_model <- c(min(dbpm_inputs$time)%m-% months(1), dbpm_inputs$time)
