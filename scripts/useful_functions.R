@@ -1409,7 +1409,7 @@ plot_growth_rate <- function(growth_df, params, region, fishing_params = NULL,
                          name = "Relative growth rate per year")+
       scale_x_continuous(trans = "log10", name = "Body mass (g)")+
       labs(title = paste0(str_replace_all(str_to_upper(region), "-", " "),
-                          ": Mean growth rate per decade"),
+                          ": Mean growth rate"),
            caption = paste0("Pelagic preference: ", 
                             round(params$pref_pelagic, 3),
                             "\nBenthic preference: ", 
