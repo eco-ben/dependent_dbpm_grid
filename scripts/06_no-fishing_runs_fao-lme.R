@@ -66,6 +66,10 @@ for(f in fao_lme){
                      "_1641-2010.parquet"))) |> 
     filter(scenario != "stable-spin")
   
+  reg_name <- str_replace_all(f, "_|-", " ") |> 
+    str_to_upper() |> 
+    str_c(sep = ": ", unique(dbpm_inputs$region_name))
+  
   # Setting fishing parameters to zero (no-fishing)
   fish_param <- data.frame("region" = str_replace(str_to_upper(f), "-", " "),
                            "fmort_u" = 0, "fmort_v" = 0, "fminx_u" = 0, 
@@ -108,11 +112,11 @@ for(f in fao_lme){
   
   ## Creating size spectrum plots -----------------------------------------
   # Decade
-  size_sp_plot <- plotsizespectrum(density_df, no_fishing_run$params, f, 
+  size_sp_plot <- plotsizespectrum(density_df, no_fishing_run$params, reg_name, 
                                    fishing_params = fish_param, mean_decade = T,
                                    nrow = 3)
   # Last year of simulation
-  size_sp_plot2 <- plotsizespectrum(density_df, no_fishing_run$params, f, 
+  size_sp_plot2 <- plotsizespectrum(density_df, no_fishing_run$params, reg_name, 
                                     fishing_params = fish_param, mean_decade = F)
   
   # Saving size spectrum plots
@@ -139,12 +143,12 @@ for(f in fao_lme){
   # Create growth rate plot
   growth_plot <- growth_df |> 
     filter(decade == max(decade)) |> 
-    plot_growth_rate(no_fishing_run$params, f, fishing_params = fish_param)
+    plot_growth_rate(no_fishing_run$params, reg_name, fish_param)
   
   growth_plot2 <- growth_df |> 
     filter(time != max(time)) |> 
     filter(time == max(time)) |> 
-    plot_growth_rate(no_fishing_run$params, f, fishing_params = fish_param)
+    plot_growth_rate(no_fishing_run$params, reg_name, fish_param)
   
   # Saving growth plots
   ggsave(
@@ -167,7 +171,8 @@ for(f in fao_lme){
   no_fishing_run_bio |> 
     #Ensuring up to 10 decimal places are saved in file
     write_parquet(file.path(
-      results_folder, paste0("dbpm-biomass_no-fishing_nonspatial", end_fn)))
+      results_folder, paste0("dbpm-biomass_no-fishing_nonspatial", end_fn,
+                             ".parquet")))
   
   biomass_data <- no_fishing_run_bio |>
     select(year, ends_with("biomass"), total_detritus) |>
@@ -185,9 +190,9 @@ for(f in fao_lme){
     geom_line()+
     geom_point()+
     facet_grid(type~., scales = "free")+
-    labs(title =
-           paste0(str_replace_all(str_to_upper(f), "_|-", " "),
-                  ": Predator and detritivore biomass, and detritus density"))+
+    labs(title = 
+           paste0(reg_name, 
+                  " - Predator and detritivore biomass, and detritus density"))+
     theme_bw()+
     theme(axis.title.x = element_blank())
   
