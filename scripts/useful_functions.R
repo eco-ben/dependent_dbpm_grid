@@ -12,6 +12,7 @@
 
 # Loading libraries -------------------------------------------------------
 library(tidyr)
+library(tibble)
 library(dplyr)
 library(stringr)
 library(arrow)
@@ -342,10 +343,14 @@ gravitymodel <- function(effort, prop_b, depth, iter){
 
   
 # Run model per grid cell or averaged over an area ------
-sizemodel <- function(params, temp_effect = T, use_init = F, 
+sizemodel <- function(params, temp_effect = T, use_init = F, trunc_size = TRUE,
                       benthic_habitat_depth = 20, detritus_input = NULL, 
                       set_plankton = FALSE){
   with(params,{
+    # - trunc_size (boolean) - Default is TRUE, which means that the size range
+    # for detritivores and predators during initialisation is truncated to size
+    # bin 120. Setting to FALSE does NOT truncate size range to size bin 120 for 
+    # neither predators and detritivores.
     # - benthic_habitat_depth (numeric) - Default is 20 meters. This refers to 
     # the thickness of vertical habitat for the benthic group. This should be
     # the same value as used in script `00_processing_dbpm_global_inputs.py` 
@@ -475,26 +480,29 @@ sizemodel <- function(params, temp_effect = T, use_init = F,
       predators[1:(ind_min_pred_size-1), 1] <- predators[1:(ind_min_pred_size-1), 2]
     }
     
-    # set initial consumer size spectrum 
-    predators[ind_min_pred_size:120, 1] <- 
-      init_pred[ind_min_pred_size:120]
+    # set initial size spectrum 
+    if(trunc_size){
+      predators[ind_min_pred_size:120, 1] <- init_pred[ind_min_pred_size:120]
+      detritivores[ind_min_detritivore_size:120, 1] <- 
+        init_detritivores[ind_min_detritivore_size:120]
+    }else{
+      predators[ind_min_pred_size:numb_size_bins, 1] <- 
+        init_pred[ind_min_pred_size:numb_size_bins]
+      detritivores[ind_min_detritivore_size:numb_size_bins, 1] <- 
+        init_detritivores[ind_min_detritivore_size:numb_size_bins]
+    }
     
     #remove time series of intercept of plankton size spectrum not in use
     rm(ui0)
     
-    # set initial detritivore spectrum (V)
-    detritivores[ind_min_detritivore_size:120, 1] <- 
-      init_detritivores[ind_min_detritivore_size:120]
-    
+    # set initial consumer size spectrum from previous run
     if(use_init == T){
-      # set initial consumer size spectrum from previous run
       predators[ind_min_pred_size:numb_size_bins, 1] <- 
         init_pred[ind_min_pred_size:numb_size_bins]
       # set initial detritivore spectrum from previous run
       detritivores[ind_min_detritivore_size:numb_size_bins, 1] <- 
         init_detritivores[ind_min_detritivore_size:numb_size_bins] 
     }
-    
     
     #other (intrinsic) natural mortality (OM.u, OM.v)
     other_mort_det <- other_mort_pred <- 
@@ -655,14 +663,12 @@ sizemodel <- function(params, temp_effect = T, use_init = F,
       
       #Detritus Biomass Density Pool - fluxes in and out (g.m-2.yr-1) of 
       #detritus pool and solve for detritus biomass density in next time step 
-      
+
       # considering pelagic faeces as input as well as dead bodies from both 
       # pelagic and benthic communities and phytodetritus (dying sinking
       # phytoplankton)
-      # Temperature effects removed from senescence mortality on 2025-08-14
-      # top match total mortality calculation above
-      # Senescense mortality removed altogether from detritus calculations
-      # after discussion with Julia on 2025-08-15
+      # Temperature effects removed from senescense and other mortality when 
+      # calculating detritus after discussion with Julia on 2026-06-23
       if(is.null(detritus_input)){
         if(detritus_coupling){
           # pelagic spectrum inputs (sinking dead bodies and faeces) - export 
@@ -671,18 +677,17 @@ sizemodel <- function(params, temp_effect = T, use_init = F,
           input_w <- (sinking_rate[i]* 
                         (sum(defbypred[ind_min_pred_size:numb_size_bins]*
                                log_size_increase)+
-                           sum(pel_tempeffect[i]*other_mort_pred*predators[, i]*
-                                 size_bins_vals*log_size_increase)+
-                           sum(pel_tempeffect[i]*senes_mort_pred*predators[, i]*
-                                 size_bins_vals*log_size_increase))+
-                        (sum(ben_tempeffect[i]*other_mort_det*detritivores[, i]*
-                               size_bins_vals*log_size_increase)+
-                           sum(ben_tempeffect[i]*senes_mort_det*
-                                 detritivores[, i]*size_bins_vals*
+                           sum(other_mort_pred*predators[, i]*size_bins_vals*
+                                 log_size_increase)+
+                           sum(senes_mort_pred*predators[, i]*size_bins_vals*
+                                 log_size_increase))+
+                        (sum(other_mort_det*detritivores[, i]*size_bins_vals*
+                               log_size_increase)+
+                           sum(senes_mort_det*detritivores[, i]*size_bins_vals*
                                  log_size_increase)))
         }else{
-          input_w <- sum(ben_tempeffect[i]*other_mort_det*detritivores[, i]*
-                           size_bins_vals*log_size_increase)+
+          input_w <- sum(other_mort_det*detritivores[, i]*size_bins_vals*
+                           log_size_increase)+
             sum(senes_mort_det*detritivores[, i]*size_bins_vals*log_size_increase)
         }}else{
           input_w <- detritus_input[i]
@@ -691,6 +696,9 @@ sizemodel <- function(params, temp_effect = T, use_init = F,
       # get burial rate from Dunne et al. 2007 equation 3
       burial <- input_w*(0.013+0.53*input_w^2/(7+input_w)^2)
       output_w <- output_w+burial
+      
+      # add remineralisation (Julia to provide more details - equation similar
+      # to burial. 20% of outputs get removed from system)
       
       # losses from detritivory + burial rate (not including remineralisation
       # bc that goes to p.p. after sediment, we are using realised p.p. as
