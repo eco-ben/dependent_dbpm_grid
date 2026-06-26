@@ -567,7 +567,7 @@ def GetPPIntSlope(gfdl_folder, gfdl_exp, mmin = 10**(-14.25), mmid = 10**(-10.18
     #convert to log10 (gww/size class median size) for log10 abundance
     large = (np.log10((lphy*10)/10**midlarge))
 
-    #Calculating lope
+    #Calculating slope
     slope = ((small-large)/(midsmall-midlarge))
     slope.name = 'slope'
     slope = slope.assign_attrs({
