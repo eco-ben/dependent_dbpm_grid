@@ -571,13 +571,13 @@ sizemodel <- function(params, temp_effect = T, use_init = F, trunc_size = TRUE,
     for(i in 1:numb_time_steps){
       # Calculate Growth and Mortality
       # feeding rates yr-1 (f_pel)
-      pred_growth <- (predators[,i]*log_size_increase)%*%(constant_growth)
+      pred_growth <- (predators[,i]*log_size_increase*log(10))%*%(constant_growth)
       
       feed_rate_pel <- pel_tempeffect[i]*as.vector(
         (feed_mult_pel*pred_growth)/(1+handling*feed_mult_pel*pred_growth)) 
       
       # yr-1 (f_ben)
-      detrit_growth <- (detritivores[,i]*log_size_increase)%*%(constant_growth)
+      detrit_growth <- (detritivores[,i]*log_size_increase*log(10))%*%(constant_growth)
       
       feed_rate_bent <- pel_tempeffect[i]* 
         as.vector((feed_mult_ben*detrit_growth)/ 
@@ -609,7 +609,7 @@ sizemodel <- function(params, temp_effect = T, use_init = F, trunc_size = TRUE,
       # yr-1 (PM_u)
       pred_mort_pred[, i] <- as.vector(
         (pref_pelagic*hr_volume_search*met_req_log10_size_bins)*
-          (predators[, i]*sat_pel*log_size_increase)%*%(constant_mortality))
+          (predators[, i]*sat_pel*log_size_increase*log(10))%*%(constant_mortality))
       
       # yr-1 (Z_u)
       tot_mort_pred[, i] <- pred_mort_pred[, i]+
@@ -641,7 +641,7 @@ sizemodel <- function(params, temp_effect = T, use_init = F, trunc_size = TRUE,
                                      (pref_benthos*hr_volume_search*
                                         met_req_log10_size_bins)*
                                        (predators[, i]*sat_ben*
-                                          log_size_increase)%*%
+                                          log_size_increase*log(10))%*%
                                        (constant_mortality)),
                                    0)
       
@@ -729,7 +729,7 @@ sizemodel <- function(params, temp_effect = T, use_init = F, trunc_size = TRUE,
       # reproduction from energy allocation
       if(dynamic_reproduction){
         predators[ind_min_pred_size, i+1] <- predators[ind_min_pred_size, i]+
-          (sum(reprod_pred[(ind_min_pred_size+1):numb_size_bins, i]*
+          (log(10)*sum(reprod_pred[(ind_min_pred_size+1):numb_size_bins, i]*
                  size_bins_vals[(ind_min_pred_size+1):numb_size_bins]*
                  predators[(ind_min_pred_size+1):numb_size_bins, i]*
                  log_size_increase)*timesteps_years)/
@@ -771,7 +771,7 @@ sizemodel <- function(params, temp_effect = T, use_init = F, trunc_size = TRUE,
       if(dynamic_reproduction){
         detritivores[ind_min_detritivore_size, i+1] <-
           detritivores[ind_min_detritivore_size, i]+
-          sum(reprod_det[idx_new, i]*size_bins_vals[idx_new]*
+          log(10)*sum(reprod_det[idx_new, i]*size_bins_vals[idx_new]*
                 detritivores[idx_new, i]*log_size_increase)*timesteps_years/
           (log_size_increase*size_bins_vals[ind_min_detritivore_size])-
           (timesteps_years/log_size_increase)*(1/log(10))*
