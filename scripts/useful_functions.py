@@ -1099,7 +1099,7 @@ def feeding_satiation_rates(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                          dbpm_fixed_inputs['pref_pelagic'])
         # Predators (f_pel)
         pred_growth = (((dbpm_init_inputs['predators']*
-                         gridded_params['log_size_increase']).
+                         gridded_params['log_size_increase']*np.log(10)).
                         dot(dbpm_fixed_inputs['constant_growth']).
                        rename({'sc': 'size_class'}))*feed_mult_pel)
         feed_rate_pel = (dbpm_dynamic_inputs['pel_tempeffect']*
@@ -1119,7 +1119,7 @@ def feeding_satiation_rates(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                         dbpm_fixed_inputs['pref_benthos'])
         # Detritivores (f_ben)
         detrit_growth = (((dbpm_init_inputs['detritivores']*
-                           gridded_params['log_size_increase']).
+                           gridded_params['log_size_increase']*np.log(10)).
                           dot(dbpm_fixed_inputs['constant_growth']).
                           rename({'sc': 'size_class'}))*feed_mult_ben)
         feed_rate_bent = (dbpm_dynamic_inputs['pel_tempeffect']*
@@ -1130,7 +1130,7 @@ def feeding_satiation_rates(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                               gridded_params['metabolic_req_detritivore']))*
                         dbpm_fixed_inputs['pref_benthos'])*
                        ((dbpm_init_inputs['detritivores']*
-                         gridded_params['log_size_increase']).
+                         gridded_params['log_size_increase']*np.log(10)).
                         dot(dbpm_fixed_inputs['constant_growth'])).
                        rename({'sc': 'size_class'}))
         #Satiation level of predator for benthic prey (sat.ben)
@@ -1203,7 +1203,7 @@ def mortality_calc(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
         # Predators (PM.u)
         pred_mort_pred = (dbpm_fixed_inputs['consume_pelagic']*
                           ((dbpm_init_inputs['predators']*feed_sat_rates['sat_pel']*
-                             gridded_params['log_size_increase']).
+                             gridded_params['log_size_increase']*np.log(10)).
                            dot(dbpm_fixed_inputs['constant_mortality'])).
                           rename({'sc': 'size_class'}))
         # Total mortality
@@ -1230,7 +1230,7 @@ def mortality_calc(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
                                  (dbpm_fixed_inputs['consume_benthos']*
                                   ((dbpm_init_inputs['predators']*
                                     feed_sat_rates['sat_ben']*
-                                    gridded_params['log_size_increase']).
+                                    gridded_params['log_size_increase']*np.log(10)).
                                    dot(dbpm_fixed_inputs['constant_mortality'])).
                                   rename({'sc': 'size_class'})), 0)
         # Total mortality
@@ -1630,7 +1630,7 @@ def tot_biomass_calc(gridded_params, dbpm_fixed_inputs, group, biomass_current,
         bio_ref = biomass_current.sel(size_class = ref_sc)
         bio_ref_next = (bio_ref+
                         ((reprod_rate*dbpm_fixed_inputs['size_bin_vals']*
-                          biomass_current*gridded_params['log_size_increase']).
+                          biomass_current*gridded_params['log_size_increase']*np.log(10)).
                          sum('size_class')*gridded_params['timesteps_years'])/
                         (gridded_params['log_size_increase']*
                          dbpm_fixed_inputs['size_bin_vals'].sel(size_class = ref_sc))-
