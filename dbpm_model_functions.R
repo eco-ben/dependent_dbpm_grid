@@ -48,17 +48,17 @@ convolution_f <- function(phi, x, u, dx) {
 ## Predators ----
 # Use faster matrix method instead of convolution loop function
 death_u <- function(pref.pel, A, expax, u, dx, mphi){
-  return((pref.pel*A*expax)*(u*dx)%*%(mphi))
+  return((pref.pel*A*expax)*(u*dx*log(10))%*%(mphi))
 } 
 
 growth_u <- function(pref.pel, K0, A, expax, u, dx, gphi, pref.ben, K1, v){
-  return((pref.pel*K0*A*expax)*(u*dx)%*%(gphi) + 
-           (pref.ben*K1*A*expax)*(v*dx)%*%(gphi))
+  return((pref.pel*K0*A*expax)*(u*dx*log(10))%*%(gphi) + 
+           (pref.ben*K1*A*expax)*(v*dx*log(10))%*%(gphi))
 }
 
 ## Detritivores ----
 death_v <- function(pref.ben, A, expax, u, dx, mphi){
-  return((pref.ben*A*expax)*(u*dx)%*%(mphi))
+  return((pref.ben*A*expax)*(u*dx*log(10))%*%(mphi))
 }
 
 growth_v <- function(x, K1, A, w){
@@ -344,11 +344,11 @@ gridded_sizemodel <- function(params, ERSEM.det.input = F, U_mat, V_mat, W_mat,
         # Feeding rates ----
         # yr-1
         #Calculating term once to reduce computing needs
-        f_pel_term <- (A.u*10^(x*alpha.u)*pref.pel[j])*(U[j,,i]*dx)%*%(gphi)
+        f_pel_term <- (A.u*10^(x*alpha.u)*pref.pel[j])*(U[j,,i]*dx*log(10))%*%(gphi)
         f_pel <- pel_tempeffect*as.vector(f_pel_term/(1+handling*f_pel_term))
         
         # yr-1
-        f_ben_term <- (A.u*10^(x*alpha.u)*pref.ben[j])*(V[j,,i]*dx)%*%(gphi)
+        f_ben_term <- (A.u*10^(x*alpha.u)*pref.ben[j])*(V[j,,i]*dx*log(10))%*%(gphi)
         f_ben <- pel_tempeffect*as.vector(f_ben_term/(1+handling*f_ben_term)) 
         
         # yr-1 
@@ -374,7 +374,7 @@ gridded_sizemodel <- function(params, ERSEM.det.input = F, U_mat, V_mat, W_mat,
         
         #yr-1 
         PM_u[j, ,i] <- as.vector((pref.pel[j]*A.u*expax) * 
-                                    (U[j, ,i]*sat_pel*dx)%*%(mphi))
+                                    (U[j, ,i]*sat_pel*dx*log(10))%*%(mphi))
         
         rm(f_pel_term)
       
@@ -397,12 +397,12 @@ gridded_sizemodel <- function(params, ERSEM.det.input = F, U_mat, V_mat, W_mat,
       #Satiation level of predator for benthic prey  
       sat_ben <- ifelse(f_ben > 0, 
                         f_ben/((A.u*10^(x*alpha.v)*pref.ben[j]) * 
-                                 (V[j, ,i]*dx)%*%(gphi)),
+                                 (V[j, ,i]*dx*log(10))%*%(gphi)),
                         0)
       #yr-1
       PM_v[j, ,i] <- ifelse(sat_ben > 0,
                              as.vector((pref.ben[j]*A.u*expax) * 
-                                         (U[j, , i]*sat_ben*dx)%*%(mphi)),
+                                         (U[j, , i]*sat_ben*dx*log(10))%*%(mphi)),
                              0)
       
       #yr-1
@@ -500,7 +500,7 @@ gridded_sizemodel <- function(params, ERSEM.det.input = F, U_mat, V_mat, W_mat,
       # reproduction from energy allocation
       if(repro.on == 1){
         U[j, ref, i+1] <- U[j, ref, i] +
-          (sum(R_u[j, (ref+1):Nx, i]*10^x[(ref+1):Nx]*U[j, (ref+1):Nx, i]*dx) *
+          (log(10)*sum(R_u[j, (ref+1):Nx, i]*10^x[(ref+1):Nx]*U[j, (ref+1):Nx, i]*dx) *
              delta.t) / (dx*10^x[ref]) - 
           (delta.t/dx)*(1/log(10))*(GG_u[j, ref, i])*U[j, ref, i] -
           delta.t*Z_u[j, ref, i]*U[j, ref, i]
@@ -537,7 +537,7 @@ gridded_sizemodel <- function(params, ERSEM.det.input = F, U_mat, V_mat, W_mat,
       # if (repro.on==0)  V[ref.det,i+1]<-(0.01*W[i+1])/(10^x[ref]) 
       if(repro.on == 1){
         V[j, ref.det, i+1] <- V[j, ref.det, i] +
-          sum(R_v[j, (ref.det+1):Nx, i]*10^x[(ref.det+1):Nx] * 
+          log(10)*sum(R_v[j, (ref.det+1):Nx, i]*10^x[(ref.det+1):Nx] * 
                 V[j, (ref.det+1):Nx, i]*dx)*delta.t/(dx*10^x[ref.det]) - 
           (delta.t/dx)*(1/log(10))*(GG_v[j, ref.det, i])*V[j, ref.det, i] -
           delta.t*Z_v[j, ref.det, i]*V[j, ref.det, i]
@@ -781,14 +781,14 @@ sizemodel <- function(params, ERSEM.det.input = F, U_mat, V_mat, W_mat,
       # feeding rates
       # yr-1
       f_pel <- pel_tempeffect[i] * 
-        as.vector(((A.u*10^(x*alpha.u)*pref.pel)*(U[, i]*dx)%*%(gphi)) / 
+        as.vector(((A.u*10^(x*alpha.u)*pref.pel)*(U[, i]*dx*log(10))%*%(gphi)) / 
                     (1+handling*(A.u*10^(x*alpha.u)*pref.pel) * 
-                       (U[, i]*dx)%*%(gphi))) 
+                       (U[, i]*dx*log(10))%*%(gphi))) 
       # yr-1
       f_ben <- pel_tempeffect[i] * 
-        as.vector(((A.u*10^(x*alpha.u)*pref.ben)*(V[, i]*dx)%*%(gphi)) / 
+        as.vector(((A.u*10^(x*alpha.u)*pref.ben)*(V[, i]*dx*log(10))%*%(gphi)) / 
                     (1+handling*(A.u*10^(x*alpha.u)*pref.ben) *
-                       (V[, i]*dx)%*%(gphi)))
+                       (V[, i]*dx*log(10))%*%(gphi)))
       # yr-1
       f_det <- ben_tempeffect[i] *
         ((1/10^x)*A.v*10^(x*alpha.v)*W[i]) / 
@@ -809,10 +809,10 @@ sizemodel <- function(params, ERSEM.det.input = F, U_mat, V_mat, W_mat,
       #Satiation level of predator for pelagic prey
       sat_pel <- ifelse(f_pel > 0,
                         f_pel/((A.u*10^(x*alpha.u)*pref.pel) * 
-                                 (U[,i]*dx)%*%(gphi)),
+                                 (U[,i]*dx*log(10))%*%(gphi)),
                         0)
       # yr-1
-      PM_u[, i] <- as.vector((pref.pel*A.u*expax)*(U[, i]*sat_pel*dx)%*%(mphi))
+      PM_u[, i] <- as.vector((pref.pel*A.u*expax)*(U[, i]*sat_pel*dx*log(10))%*%(mphi))
       # yr-1
       #PM_u[,i]<-as.vector((1-f_pel)*(A.u*10^(x*alpha.u)*pref.pel)*(U[,i]*dx)%*%(mphi))
       
@@ -833,12 +833,12 @@ sizemodel <- function(params, ERSEM.det.input = F, U_mat, V_mat, W_mat,
       #Satiation level of predator for benthic prey 
       sat_ben <- ifelse(f_ben > 0,
                         f_ben/((A.u*10^(x*alpha.v)*pref.ben) * 
-                                 (V[, i]*dx)%*%(gphi)),
+                                 (V[, i]*dx*log(10))%*%(gphi)),
                         0)
       # yr-1
       PM_v[, i] <- ifelse(sat_ben > 0,
                           as.vector((pref.ben*A.u*expax) *
-                                      (U[, i]*sat_ben*dx)%*%(mphi)),
+                                      (U[, i]*sat_ben*dx*log(10))%*%(mphi)),
                           0)
       # yr-1
       #PM_v[,i]<-as.vector((1-f_ben)*(A.u*10^(x*alpha.u)*pref.ben)*(U[,i]*dx)%*%(mphi))
@@ -943,7 +943,7 @@ sizemodel <- function(params, ERSEM.det.input = F, U_mat, V_mat, W_mat,
       # reproduction from energy allocation
       if(repro.on == 1){
         U[ref, i+1] <- U[ref, i] +
-          (sum(R_u[(ref+1):Nx, i]*10^x[(ref+1):Nx]*U[(ref+1):Nx, i]*dx) *
+          (log(10)*sum(R_u[(ref+1):Nx, i]*10^x[(ref+1):Nx]*U[(ref+1):Nx, i]*dx) *
              delta.t)/(dx*10^x[ref])-(delta.t/dx)*(1/log(10)) *
           (GG_u[ref, i])*U[ref, i]-delta.t*Z_u[ref, i]*U[ref, i]
       }
@@ -981,7 +981,7 @@ sizemodel <- function(params, ERSEM.det.input = F, U_mat, V_mat, W_mat,
       # if (repro.on==0)  V[ref.det,i+1]<-(0.01*W[i+1])/(10^x[ref]) 
       if(repro.on == 1){
         V[ref.det, i+1] <- V[ref.det, i] +
-          sum(R_v[(ref.det+1):Nx, i]*10^x[(ref.det+1):Nx] * 
+          log(10)*sum(R_v[(ref.det+1):Nx, i]*10^x[(ref.det+1):Nx] * 
                 V[(ref.det+1):Nx, i]*dx)*delta.t/(dx*10^x[ref.det]) - 
           (delta.t/dx)*(1/log(10))*(GG_v[ref.det, i])*V[ref.det, i] - 
           delta.t*Z_v[ref.det, i]*V[ref.det, i]
