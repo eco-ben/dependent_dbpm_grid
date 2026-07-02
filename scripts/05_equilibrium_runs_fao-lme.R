@@ -39,20 +39,27 @@ fish_param <- data.frame("region" = NA, "fmort_u" = 0, "fmort_v" = 0,
                          "fminx_u" = 0, "fminx_v" = 0, 
                          "search_vol" = 64*seq(0.1, 10, by = 0.1))
 
+# Define whether detritus should be calculated or not. Set NULL if detritus is
+# to be calculated by DBPM. Otherwise provide data (e.g., dbpm_inputs$input_w)
+detritus_input <- NULL
+
 # Parallelising runs using parallelly and furrr
 plan(multisession, workers = availableCores())
 
 # Initial calibration loop ------------------------------------------------
 for(f in fao_lme){
   # Define results folder
-  results_folder <- file.path(out_folder, f, "equilibrium_run")
+  # results_folder <- file.path(out_folder, f, "equilibrium_run")
+  # results_folder <- file.path(out_folder, f, "dynamic_equilibrium_run_input-w")
+  # results_folder <- file.path(out_folder, f, "equilibrium_run_no-tempeff")
+  results_folder <- file.path(out_folder, f, "equilibrium_run_no-tempeff_no-det-input")
   
   # If the folder does not exist, create a new one
   if(!dir.exists(results_folder)){
     dir.create(results_folder, recursive = T)
   }
   
-  # Add region name to variable with fishing parameterss
+  # Add region name to variable with fishing parameters
   fish_param <- fish_param |> 
     mutate(region = f)
   
@@ -69,28 +76,22 @@ for(f in fao_lme){
   # Parallelising equilibrium runs per region of interest
   future_walk(1:nrow(fish_param), ~{
     i <- .x
-    # Get parameters ready for calibration run
-    sizeparam(dbpm_inputs, fish_param[i,], xmin_consumer_u = -3,
-              xmin_consumer_v = -3) |>
-      #Ensuring up to 10 decimal places are saved in file
-      write_json(
-        file.path(results_folder,
-                  paste0("dbpm_size_params_", f, "_searchvol_",
-                         fish_param[i,]$search_vol, ".json")), digits = 10)
+    # File name to be added to end
+    end_fn <- paste0("_", f, "_searchvol-", fish_param[i,]$search_vol, "_", 
+                     min(dbpm_inputs$year), "-", max(dbpm_inputs$year))
 
     # Run non-spatial DBPM.  This step is necessary to get the initial
     # conditions to be used in the gridded DBPM
     init_results <- run_model(fish_param[i,], dbpm_inputs, withinput = F,
                               xmin_consumer_u = -3, xmin_consumer_v = -3,
-                              include_plankton = T)
+                              include_plankton = T, trunc_size = TRUE,
+                              detritus_input = detritus_input)
 
     # Saving initial results for non-spatial run
-    init_results |>
-      #Ensuring up to 10 decimal places are saved in file
-      write_json(file.path(
-        results_folder, paste0("init_dbpm_nonspatial_", f, "_searchvol_",
-                               fish_param[i,]$search_vol, ".json")), 
-        digits = 10)
+    write_json(init_results,
+               file.path(results_folder, 
+                         paste0("init_dbpm_nonspatial", end_fn, ".json")), 
+               digits = 10)
 
     ## Size spectrum plots per group (predators and detritivores) ---------
     # Transform density matrix to data frame to create plots
@@ -102,8 +103,7 @@ for(f in fao_lme){
                                  mean_decade = T, return_data = T)
     
     write_parquet(den_data$data, file.path(
-      results_folder, paste0("size_spectrum_data_", f, "_searchvol_",
-                             fish_param[i,]$search_vol, ".parquet")))
+      results_folder, paste0("size_spectrum_data", end_fn, ".parquet")))
     
     
     ## Creating growth rate plots -------------------------------------------
@@ -113,22 +113,21 @@ for(f in fao_lme){
       # initialisation only
       filter(time >= min(as_date(dbpm_inputs$time))) 
     
-    plot_growth_rate(growth_df, init_results$params, f,
-                     fishing_params = fish_param[i,], return_data = T) |> 
-      write_parquet(file.path(
-        results_folder, paste0("growth_rates_data", f, "_searchvol_",
-                               fish_param[i,]$search_vol, ".parquet")))
+    growth_data <- plot_growth_rate(growth_df, init_results$params, f,
+                     fishing_params = fish_param[i,], return_data = T)
+    
+    write_parquet(growth_data$data,
+                  file.path(results_folder, 
+                            paste0("growth_rates_data", end_fn, ".parquet")))
     
     #Equilibrium run
     calib_run <- run_model(fish_param[i,], dbpm_inputs, xmin_consumer_u = -3,
                            xmin_consumer_v = -3, include_plankton = T)
 
     # Save results
-    calib_run |> 
-      write_parquet(
-        file.path(results_folder, 
-                  paste0("dbpm_nonspatial_", f, "_searchvol_", 
-                         fish_param[i,]$search_vol, "_1641-1840.parquet")))
+    write_parquet(calib_run,
+                  file.path(results_folder, 
+                            paste0("dbpm_nonspatial", end_fn, ".parquet")))
 
     # Create plots of biomass (predators, detritivores and detritus)
     calib_run |>
@@ -142,8 +141,7 @@ for(f in fao_lme){
       replace_na(list(type = "detritus")) |> 
       mutate(search_vol = fish_param[i,]$search_vol) |> 
       write_parquet(file.path(
-        results_folder, paste0("plankton-pred-detritus-bio_detritus_", f, 
-                               "_searchvol_", fish_param[i,]$search_vol, 
+        results_folder, paste0("plankton-pred-detritus-bio_detritus", end_fn, 
                                ".parquet")))
   }, .options = furrr_options(seed = T))
 }
@@ -151,7 +149,9 @@ for(f in fao_lme){
 
 # Creating diagnostic plots per region per decade -------------------------
 for(f in fao_lme){
-  results_folder <- file.path(out_folder, f, "equilibrium_run")
+  # results_folder <- file.path(out_folder, f, "equilibrium_run")
+  # results_folder <- file.path(out_folder, f, "equilibrium_run_no-tempeff")
+  results_folder <- file.path(out_folder, f, "equilibrium_run_no-tempeff_no-det-input")
   
   print(paste0("Running DBPM for region: ", f))
   
@@ -196,8 +196,8 @@ for(f in fao_lme){
   ## Size spectrum plots --------------------------------------------------
   # Loading data
   density_df <- list.files(
-    results_folder, pattern = paste0("size_spectrum_data.*", 
-                                     good_search_vol$search_vol, 
+    results_folder, pattern = paste0("size_spectrum_data.*vol-", 
+                                     good_search_vol$search_vol, "_.*",
                                      collapse = "|"), full.names = T) |> 
     map(\(x) read_parquet(x)) |> 
     bind_rows() |> 
@@ -260,9 +260,10 @@ for(f in fao_lme){
 
 
 # Creating diagnostic plots per region for final timestep -----------------
-density_growth_global <- tibble()
 for(f in fao_lme){
-  results_folder <- file.path(out_folder, f, "equilibrium_run")
+  # results_folder <- file.path(out_folder, f, "equilibrium_run")
+  # results_folder <- file.path(out_folder, f, "equilibrium_run_no-tempeff")
+  results_folder <- file.path(out_folder, f, "equilibrium_run_no-tempeff_no-det-input")
   
   print(paste0("Running DBPM for region: ", f))
   
@@ -270,7 +271,7 @@ for(f in fao_lme){
   ## Regional inputs ------------------------------------------------------
   f_inputs <- read_parquet(list.files(
     file.path(base_folder, f, paste0("monthly_weighted", smoothed)), 
-    paste0("dbpm_clim-fish-inputs", fn_search, "_", f), full.names = T), 
+    paste0("dbpm_clim-fish-inputs", fn_search, "_", f, "_1641"), full.names = T), 
     col_select = scenario:depth) |> 
     filter(time == min(time))
   
@@ -296,7 +297,7 @@ for(f in fao_lme){
   # Get files for successful runs only
   init_files <- list.files(
     results_folder, 
-    pattern = paste0("^init_dbpm.*_", good_search_vol$search_vol, ".json", 
+    pattern = paste0("^init_dbpm.*-", good_search_vol$search_vol, "_.*json$", 
                      collapse = "|"), full.names = T)
   
   # Creating empty tibble to store global results
@@ -337,6 +338,7 @@ for(f in fao_lme){
   
   # Binding all search volumes together within a single region
   density_growth_reg <- f_inputs |> 
+    select(!time:month) |> 
     bind_cols(density_growth_reg)
   
   density_growth_reg |> 
@@ -348,7 +350,9 @@ for(f in fao_lme){
 
 # Binding all search volume results together for the entire world
 global_success <- fao_lme |> 
-  map(\(x) list.files(file.path(out_folder, x, "equilibrium_run"), 
+  # map(\(x) list.files(file.path(out_folder, x, "equilibrium_run"),
+  # map(\(x) list.files(file.path(out_folder, x, "equilibrium_run_no-tempeff"),
+  map(\(x) list.files(file.path(out_folder, x, "equilibrium_run_no-tempeff_no-det-input"),
                       "successful", full.names = T) |> 
         read_parquet()) |> 
   bind_rows()
@@ -356,7 +360,9 @@ global_success <- fao_lme |>
 # Save all results
 global_success |> 
   write_parquet(file.path(
-    out_folder, "successful_equilibrium_runs_inputs-outputs_global.parquet"))
+    # out_folder, "successful_equilibrium_runs_inputs-outputs_global.parquet"))
+    # out_folder, "successful_equilibrium_runs_inputs-outputs_global_no-tempeff.parquet"))
+  out_folder, "successful_equilibrium_runs_inputs-outputs_global_no-tempeff_no-det.parquet"))
 
 # Save inputs only
 global_in <- global_success |> 
@@ -364,7 +370,9 @@ global_in <- global_success |>
   distinct() 
 
 global_in |>
-  write_parquet(file.path(out_folder, "equilibrium_runs_inputs_global.parquet"))
+  # write_parquet(file.path(out_folder, "equilibrium_runs_inputs_global.parquet"))
+  # write_parquet(file.path(out_folder, "equilibrium_runs_inputs_global_no-tempeff.parquet"))
+  write_parquet(file.path(out_folder, "equilibrium_runs_inputs_global_no-tempeff_no-det.parquet"))
 
 # Save max and minimum search volume values resulting in successful runs
 min_max_sv <- global_success |> 
@@ -373,7 +381,9 @@ min_max_sv <- global_success |>
 
 min_max_sv |> 
   write_parquet(file.path(
-    out_folder, "successful_equilibrium_runs_searchvol_global.parquet"))
+    # out_folder, "successful_equilibrium_runs_searchvol_global.parquet"))
+    # out_folder, "successful_equilibrium_runs_searchvol_global_no-tempeff.parquet"))
+    out_folder, "successful_equilibrium_runs_searchvol_global_no-tempeff_no-det.parquet"))
 
 plot_global_data <- min_max_sv |> 
   left_join(global_in)
@@ -389,7 +399,9 @@ p1 <- plot_global_data |>
   scale_fill_viridis_c() 
 
 ggsave(file.path(out_folder, 
-                 "successful_equilibrium_runs_searchvol_global.png"), p1, 
+                 # "successful_equilibrium_runs_searchvol_global.png"), p1,
+                 # "successful_equilibrium_runs_searchvol_global_no-tempeff.png"), p1, 
+                 "successful_equilibrium_runs_searchvol_global_no-tempeff_no-det.png"), p1, 
        scale = 1.5, bg = "white")
 
 
@@ -402,28 +414,69 @@ p2 <- plot_global_data |>
        title = "")+
   scale_fill_viridis_c() 
 
-ggsave(file.path(out_folder, 
-                 "successful_equilibrium_runs_searchvol_global_int-ordered.png"), 
-       p2, scale = 1.5, bg = "white")
+ggsave(file.path(
+  out_folder, "successful_equilibrium_runs_searchvol_global_int-ordered.png"), 
+  p2, scale = 1.5, bg = "white")
 
+# Plotting all successful search volume values
+global_success |> 
+  distinct(region, search_vol) |> 
+  ggplot(aes(search_vol, region, fill = region))+
+  geom_tile(alpha = 0.5, color = "grey", show.legend = F)+
+  theme_bw()+
+  scale_x_continuous(labels = fish_param$search_vol, 
+                     breaks = fish_param$search_vol, expand = c(0, 0))+
+  theme(axis.text.x = element_text(angle = 90), 
+        panel.grid.major = element_blank())
+
+ggsave(file.path(
+  # out_folder, "successful_equilibrium_runs_searchvol_global_all-values.png"),
+  # out_folder, "successful_equilibrium_runs_searchvol_global_all-values_no-tempeff.png"),
+  out_folder, "successful_equilibrium_runs_searchvol_global_all-values_no-tempeff_no-det.png"),
+  scale = 1.5, bg = "white")
 
 
 # Dynamic equilibrium run for the Arctic ----------------------------------
-f <- "fao_lme-64"
+f <- "fao_lme-35"
 
 dbpm_inputs <- read_parquet(
   file.path(base_folder, f, paste0("monthly_weighted", smoothed),
-            paste0("dbpm_dynamic_clim-fish-inputs", fn_search, "_", f, 
-                   "_1641-2010.parquet"))) |> 
-  filter(scenario == "stable-spin")
+            paste0("dbpm_clim-fish-inputs", fn_search, "_", f, 
+                   "_1641-2010.parquet")))
 
-results_folder <- file.path(out_folder, f, "dynamic_equilibrium_run")
+dbpm_inputs <- dbpm_inputs |> 
+  filter(scenario == "spinup") |> 
+  group_by(month) |> 
+  summarise(across(is.numeric & !c(year, time), ~ mean(.x, na.rm = T))) |> 
+  mutate(month = factor(month, levels = month.name, ordered = T)) |> 
+  arrange(month) |> 
+  replicate(200, expr = _, simplify = F) |> 
+  bind_rows() |> 
+  mutate(scenario = "stable-spin", region = unique(dbpm_inputs$region),
+         region_name = unique(dbpm_inputs$region_name),
+         time = seq(as_date("1641-01-01"), as_date("1840-12-31"), 
+                    by = "month"), year = year(time), .before = month)
+
+# Save dynamic equilibrium
+dbpm_inputs |> 
+  write_parquet(
+    file.path(base_folder, f, paste0("monthly_weighted", smoothed),
+              paste0("dbpm_dynamic_clim-fish-inputs", fn_search, "_", f, 
+                     "_1641-2010.parquet")))
+  
+
+# results_folder <- file.path(out_folder, f, "dynamic_equilibrium_run")
+results_folder <- file.path(out_folder, f, "dynamic_equilibrium_run_no-tempeff")
 
 search_volume <- 12.8
 
 fish_param <- data.frame("region" = str_replace(str_to_upper(f), "-", " "),
                          "fmort_u" = 0, "fmort_v" = 0, "fminx_u" = 0, 
                          "fminx_v" = 0, "search_vol" = search_volume)
+
+# File name to be added to end
+end_fn <- paste0("_", f, "_searchvol-", fish_param$search_vol, "_", 
+                 min(dbpm_inputs$year), "-", max(dbpm_inputs$year))
 
 # Get parameters ready for calibration run
 params <- sizeparam(dbpm_inputs, fish_param, xmin_consumer_u = -3,
@@ -432,20 +485,19 @@ params <- sizeparam(dbpm_inputs, fish_param, xmin_consumer_u = -3,
 # Saving non-spatial parameters
 params |>
   #Ensuring up to 10 decimal places are saved in file
-  write_json(file.path(results_folder,
-                       paste0("dbpm_size_params_", f, "_searchvol_",
-                              fish_param$search_vol, ".json")), digits = 10)
+  write_json(file.path(
+    results_folder, paste0("dbpm_size_params", end_fn, ".json")), digits = 10)
 
 calib_run <- run_model(fish_param, dbpm_inputs, withinput = F, 
                        xmin_consumer_u = -3, xmin_consumer_v = -3,
-                       include_plankton = T)
+                       include_plankton = T, trunc_size = FALSE)
 
 # Saving initial results for non-spatial run
 calib_run |>
   #Ensuring up to 10 decimal places are saved in file
-  write_json(file.path(results_folder,
-                       paste0("init_dbpm_nonspatial_", f, "_searchvol_",
-                              fish_param$search_vol, ".json")), digits = 10)
+  write_json(
+    file.path(results_folder,
+              paste0("init_dbpm_nonspatial", end_fn, ".json")), digits = 10)
 
 
 ## Size spectrum plots per group (predators and detritivores) ---------
@@ -458,8 +510,7 @@ size_sp_plot <- plotsizespectrum(density_df, calib_run$params, f,
                                  nrow = 3)
 
 # Saving size spectrum plot for non-spatial runs
-ggsave(file.path(results_folder, paste0("size_spectrum_", f, "_searchvol_", 
-                                        fish_param$search_vol, ".png")),
+ggsave(file.path(results_folder, paste0("size_spectrum", end_fn, ".png")),
        size_sp_plot, bg = "white")
 
 ## Creating growth rate plots -------------------------------------------
@@ -470,24 +521,23 @@ growth_df <- dbpm_output_mat_to_df(calib_run, dates_model, "growth") |>
   filter(time >= min(as_date(dbpm_inputs$time)))
 
 # Create growth rate plot
-growth_plot <- plot_growth_rate(growth_df, calib_run$params, f,
-                                fishing_params = fish_param)
+growth_plot <- growth_df |> 
+  filter(decade == max(decade)) |> 
+  plot_growth_rate(calib_run$params, f, fishing_params = fish_param)
 
 # Saving size spectrum plot for non-spatial runs
-ggsave(file.path(results_folder, paste0("growth_rates_", f, "_searchvol_",
-                                        fish_param$search_vol, ".png")),
+ggsave(file.path(results_folder, paste0("growth_rates", end_fn, ".png")),
        growth_plot, bg = "white")
 
 #Equilibrium run
 equilib_run <- run_model(fish_param, dbpm_inputs, withinput = T,
                          xmin_consumer_u = -3, xmin_consumer_v = -3, 
-                         include_plankton = T)
+                         include_plankton = T, trunc_size = FALSE)
 
 # Save results
 equilib_run |>
   write_parquet(file.path(results_folder, 
-                          paste0("dbpm_nonspatial_", f, "_searchvol_",
-                                 fish_param$search_vol, "_1801-2000.parquet")))
+                          paste0("dbpm_nonspatial", end_fn, ".parquet")))
 
 # Create plots of biomass (predators, detritivores and detritus)
 biomass_data <- equilib_run |>
@@ -501,19 +551,17 @@ bio_plot <- biomass_data |>
   separate_wider_delim(group, delim = "_", names = c("group", "type"),
                        too_few = "align_start") |>
   replace_na(list(type = "detritus")) |>
-  ggplot(aes(x = year, y = values, color = group))+
-  geom_line()+
-  geom_point()+
-  facet_grid(type~., scales = "free")+
-  labs(title =
-         paste0(str_replace_all(str_to_upper(f), "_|-", " "),
-                ": Predator and detritivore biomass, and detritus density"))+
+  ggplot(aes(year, values))+
+  geom_line(alpha = 0.5)+
+  facet_grid(group~., scales = "free")+
+  labs(title = paste0("Last simulated decade: Estimated biomass per group - ",
+                      str_to_upper(str_replace_all(f, "_|-", " "))))+
   theme_bw()+
-  theme(axis.title.x = element_blank())
-
-ggsave(file.path(results_folder,
-                 paste0("pred-detritus-bio_detritus_", f, "_searchvol_",
-                        fish_param$search_vol, ".png")), bio_plot, bg = "white")
+  theme(axis.title = element_blank())
+  
+ggsave(file.path(
+  results_folder, paste0("pred-detritus-bio_detritus", end_fn, ".png")), 
+  bio_plot, bg = "white")
 
 min_pred_size <- calib_run$params$min_log10_pred
 min_det_size <- calib_run$params$min_log10_detritivore
@@ -569,10 +617,9 @@ size_spec_plot <- density_growth_df |>
         plot.caption = element_text(size = 11),
         plot.title = element_text(hjust = 0.5, face = "bold"))
 
-ggsave(file.path(results_folder, 
-                 paste0("size_spectrum_finaltimestep_", f, "_searchvol_", 
-                        fish_param$search_vol, ".png")), size_spec_plot,
-       bg = "white")
+ggsave(file.path(
+  results_folder, paste0("size_spectrum_finaltimestep", end_fn, ".png")), 
+  size_spec_plot, bg = "white")
 
 growth_rates_plot <- density_growth_df |> 
   pivot_longer(ends_with("growth"), names_to = "group", values_to = "growth") |>
@@ -593,10 +640,9 @@ growth_rates_plot <- density_growth_df |>
         plot.title = element_text(hjust = 0.5, face = "bold"))
 
 # Saving size spectrum plot for non-spatial runs
-ggsave(file.path(results_folder,
-                 paste0("growth_rates_finaltimestep_", f, "_searchvol_",
-                        fish_param$search_vol, ".png")), growth_rates_plot, 
-       bg = "white")
+ggsave(file.path(
+  results_folder, paste0("growth_rates_finaltimestep", end_fn, ".png")), 
+  growth_rates_plot, bg = "white")
 
 
 
