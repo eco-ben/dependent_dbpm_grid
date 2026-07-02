@@ -84,8 +84,14 @@ if __name__ == '__main__':
                 os.path.join(gfdl_out, base_fn.replace('_var_', '_input-w20m_')), 
                 consolidated = True, mode = 'w')
 
-            # Vertically integrate phytoplankton inputs up to threshold depth
-            phyc, phypico = uf.integrating_phyto(gfdl_out, exp, thresh_depth = 200)
+            # Reduce the depth-resolved phyto to a per-cell concentration.
+            # averaging: 'biomass_weighted' (recommended - de-biased, threshold-free,
+            # matches a food-tracking vertical migrator) | 'mld' | 'cumulative90' |
+            # 'fixed200' (legacy). Output file name kept ('*-vint200m') for
+            # compatibility with getExportRatio/GetPPIntSlope, though the content is
+            # now the chosen concentration, not a 0-200 m integral.
+            phyc, phypico = uf.integrating_phyto(gfdl_out, exp, thresh_depth = 200,
+                                                 averaging = 'biomass_weighted')
             #Save outputs
             phyc.to_zarr(
                 os.path.join(gfdl_out, base_fn.replace('_var_', '_phyc-vint200m_')), 
@@ -135,7 +141,7 @@ if __name__ == '__main__':
                 #lowest latitude area where sea ice forms each winter according to NASA's 
                 #Earth Observatory
                 da_mask_north = (xr.where(da_mask.lat > 42, da_mask, False).
-                    isel(lat = slice(None, None, -1)).cumsum('lat')))
+                    isel(lat = slice(None, None, -1)).cumsum('lat'))
                 #Sea ice kept from 52S towards the south pole as 55S is the lowest latitude area
                 # where sea ice forms each winter according to NASA's Earth Observatory
                 da_mask_south = xr.where(da_mask.lat <= -52, da_mask, False).cumsum('lat')
