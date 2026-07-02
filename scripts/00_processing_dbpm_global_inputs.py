@@ -34,7 +34,10 @@ if __name__ == '__main__':
     resolutions = ['1deg', '025deg']
 
     #Define variables of interest
-    dbpm_var = ['phyc', 'phypico', 'siconc', 'deptho', 'expc-bot', 'tob', 'tos']
+    # mlotst-0125 (mixed-layer depth, 0.125 kg m-3 criterion) is required by the
+    # MLD-aware phyto averaging in integrating_phyto()/get_threshold_depth().
+    dbpm_var = ['phyc', 'phypico', 'siconc', 'deptho', 'expc-bot', 'tob', 'tos',
+                'mlotst-0125']
     
     #Loop through experiments and resolutions
     for res in resolutions:

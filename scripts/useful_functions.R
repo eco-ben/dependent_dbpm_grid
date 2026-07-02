@@ -86,9 +86,16 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
     
     # set predator coupling to benthos, depth dependent - 0.75 above 500 m, 0.5
     # between 500-1800 and 0 below 	1800m (suggestions of values from Clive
-    # Trueman based on stable isotope work, and proportion of biomass, 	Rockall 
+    # Trueman based on stable isotope work, and proportion of biomass, 	Rockall
     # Trough studies) (pref.ben)
-    param$pref_benthos <- 0.8*exp(-1/250*param$depth)
+    # The decay length is a vertical-MIGRATION scale (~1500 m: mesopelagic + deep
+    # migrators), NOT the passive sinking length. The former 0.8*exp(-depth/250)
+    # reused the sinking attenuation length, giving ~0 coupling by 1 km (0.14 at
+    # 500 m, 7e-4 at 1800 m) - contradicting the Trueman values above and
+    # collapsing the whole pelagic spectrum in deep LMEs (it is the only benthic
+    # food subsidy holding a low-productivity pelagic above its persistence
+    # threshold). /1500 gives 0.57 at 500 m, 0.24 at 1800 m, 0.08 at 3437 m.
+    param$pref_benthos <- 0.8*exp(-1/1500*param$depth)
     
     # preference for pelagic prey (pref.pel)
     param$pref_pelagic <- 1-param$pref_benthos 

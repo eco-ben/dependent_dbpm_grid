@@ -421,11 +421,22 @@ def integrating_phyto(folder_gridded_data, gfdl_exp, thresh_depth = 200):
     depth.
     '''
 
-    #load depth
-    depth = (xr.open_zarr(glob(os.path.join(folder_gridded_data, 
+    # MLD-aware averaging depth (per grid cell): use the mixed-layer depth in deep
+    # water and the full column (>= MLD) in shallow water, capped at `thresh_depth`.
+    # Averaging phyto over a fixed `thresh_depth` (200 m) dilutes surface production
+    # in deep, productive columns (e.g. eastern-boundary upwelling) with phyto-poor
+    # water below the euphotic zone - the mixed layer is where the phytoplankton
+    # sits, so this de-biases the deep-system phyto inputs (the depth-integrated
+    # spectrum intercept was ~10x lower for deep than shallow LMEs).
+    td = get_threshold_depth(folder_gridded_data, gfdl_exp, max_depth = thresh_depth)
+
+    #load layer thickness (top thresh_depth), then zero the weight of levels below the
+    #per-cell MLD threshold so the thickness-weighted mean below spans only the mixed layer
+    depth = (xr.open_zarr(glob(os.path.join(folder_gridded_data,
                                             f'*_thkcello_*'))[0])['thkcello'].
         drop_vars('time').squeeze().sel(lev = slice(None, thresh_depth)).fillna(0))
-    
+    depth = depth.where(depth['lev'] <= td, 0)
+
     #Load phypico
     phypico = (xr.open_zarr(glob(
         os.path.join(folder_gridded_data, f'*{gfdl_exp}_phypico_*'))[0])['phypico'].
