@@ -21,12 +21,6 @@ fao_lme <- list.dirs(base_folder, recursive = F, full.names = F) |>
 # Define search volume
 search_volume <- 12.8
 
-# Calibration runs should include fishing?
-fishing <- F
-
-# Fishing parameters already created?
-params_ready <- F
-
 # Number of iterations (minimum recommend - 500 iterations)
 no_iter <- 500
 
@@ -46,36 +40,42 @@ if(!is.null(smoothed)){
 for(f in fao_lme){
   # Load inputs (weighted means) - We will only use 1 deg inputs to calculate 
   # fishing parameters
-  dbpm_inputs <- read_parquet(list.files(
-    file.path(base_folder, f, paste0("monthly_weighted", smoothed)), 
-    paste0("dbpm_clim-fish-inputs", fn_search, "_", f), full.names = T))
+  if(f == "fao_lme-64"){
+    dbpm_inputs <- list.files(
+      file.path(base_folder, f, paste0("monthly_weighted", smoothed)), 
+                paste0("dbpm_dynamic_clim.*", fn_search, ".*1641-2010"),
+      full.names = T) |> 
+      read_parquet()
+  }else{
+    dbpm_inputs <- list.files(
+      file.path(base_folder, f, paste0("monthly_weighted", smoothed)), 
+      paste0("dbpm_clim-fish.*", fn_search, ".*1641-2010"), 
+      full.names = T) |> 
+      read_parquet()
+  }
   
+  # Getting minimum reported size of fish harvested when fishing began
   min_fish_size <- dbpm_inputs |> 
     drop_na(min_fished_weight_class) |> 
-    filter(year == min(year)) |> 
-    distinct(min_fished_weight_class) |> 
-    pull()
+    filter(time == min(time)) |> 
+    pull(min_fished_weight_class)
+  
+  # Removing stable spin period
+  dbpm_inputs <- dbpm_inputs |> 
+    filter(scenario != "stable-spin")
   
   ## Searching best fishing parameters values for area of interest ----------
   #Path to folder where results will be stored
   results_folder <- file.path(base_folder, f, "fishing_params",
-                                paste0("best_fish_params", smoothed))
+                              paste0("best_fish_params", smoothed))
  
-  if(!params_ready & fishing){
-    params_calibration <- LHSsearch(
-      num_iter = no_iter, search_volume = search_volume,  
-      min_fish_size_pred = min_fish_size, min_fish_size_detrit = min_fish_size,
-      forcing_file = dbpm_inputs, gridded_forcing = NULL, 
-      best_val_folder = results_folder, best_param = F) |> #, 
-      # detritus_input = dbpm_inputs$input_w) |>
-      rowid_to_column("id")
-  }else{
-    params_calibration <- read_parquet(
-      file.path(results_folder, 
-                paste0("best-fishing-parameters_", f, "_searchvol_", 
-                       search_volume, "_numb-iter_", no_iter, ".parquet"))) |>
-      rowid_to_column("id")
-  }
+  params_calibration <- LHSsearch(
+    num_iter = no_iter, search_volume = search_volume,  
+    min_fish_size_pred = min_fish_size, min_fish_size_detrit = min_fish_size,
+    forcing_file = dbpm_inputs, gridded_forcing = NULL, 
+    best_val_folder = results_folder, best_param = F) |> #, 
+    # detritus_input = dbpm_inputs$input_w) |>
+    rowid_to_column("id")
 
   ## Creating plots with fishing parameters calculated above --------------
   # Calculate errors and correlations with tuned fishing parameters and save 
@@ -289,13 +289,8 @@ out_folder <- "/g/data/vf71/fishmip_outputs/ISIMIP3a/fao_lme_outputs/"
 
 # Start calibration runs
 for(f in fao){
-  if(fishing){
-    results_folder <- file.path(base_folder, f, "init_fish_vals", 
-                                paste0("best_fish_vals", smoothed))
-  }else{
-    results_folder <- file.path(base_folder, f, "init_fish_vals_no-fishing", 
-                                paste0("best_fish_vals", smoothed))
-  }
+  results_folder <- file.path(base_folder, f, "init_fish_vals", 
+                              paste0("best_fish_vals", smoothed))
   
   # If the folder does not exist, create a new one
   if(!dir.exists(results_folder)){
@@ -307,36 +302,21 @@ for(f in fao){
                                   "_1741-2010.parquet")) |> 
     read_parquet()
   
-  if(fishing){
-    fishing_params <- read_parquet(
-      list.files(file.path(base_folder, f, "fishing_params",
-                           paste0("best_fish_params", smoothed)), 
-                 "^best-fishing-parameters_", full.names = T))
-      
-    # Find parameters with lowest RMSE and correlation of 0.5 or higher          
+  fishing_params <- read_parquet(
+    list.files(file.path(base_folder, f, "fishing_params",
+                         paste0("best_fish_params", smoothed)), 
+               "^best-fishing-parameters_", full.names = T))
+    
+  # Find parameters with lowest RMSE and correlation of 0.5 or higher          
+  fish_param <- fishing_params |> 
+    filter(cor >= 0.5) |> 
+    filter(rmse == min(rmse))
+  # If above condition is not met, then find the lowest RMSE but consider 
+  # results from runs with positive correlations
+  if(nrow(fish_param) == 0){
     fish_param <- fishing_params |> 
-      filter(cor >= 0.5) |> 
+      filter(cor > 0) |> 
       filter(rmse == min(rmse))
-    # If above condition is not met, then find the lowest RMSE but consider 
-    # results from runs with positive correlations
-    if(nrow(fish_param) == 0){
-      fish_param <- fishing_params |> 
-        filter(cor > 0) |> 
-        filter(rmse == min(rmse))
-    }
-  }else if(!fishing){
-    if(is.numeric(search_volume)){
-      fish_param <- data.frame("region" = str_replace(str_to_upper(f),
-                                                      "-", " "),
-                               "fmort_u" = 0, "fmort_v" = 0, "fminx_u" = 0, 
-                               "fminx_v" = 0, "search_vol" = search_volume)
-    }else if(search_volume == "estimated"){
-      fish_param <- data.frame("region" = str_replace(str_to_upper(f), 
-                                                      "-", " "),
-                               "fmort_u" = 0, "fmort_v" = 0, "fminx_u" = 0, 
-                               "fminx_v" = 0, 
-                               "search_vol" = lhs::randomLHS(1, 1))
-    }
   }
   
   # Get parameters ready for calibration run
@@ -352,15 +332,9 @@ for(f in fao){
   
   
   # Defining folder to save non-spatial results
-  if(fishing){
-    dbpm_out_folder <- file.path(out_folder, f, 
+  dbpm_out_folder <- file.path(out_folder, f, 
                                  paste0("fishing_runs", smoothed),
                                  "nonspatial")
-  }else{
-    dbpm_out_folder <- file.path(out_folder, f, 
-                                 paste0("no-fishing_runs", smoothed),
-                                 "nonspatial")
-  }
   
   if(!dir.exists(dbpm_out_folder)){
     dir.create(dbpm_out_folder, recursive = T)
