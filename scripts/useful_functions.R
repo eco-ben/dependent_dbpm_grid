@@ -85,7 +85,7 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
     param$sea_floor_temp <- dbpm_inputs$tob
     
     # set predator coupling to benthos, depth dependent - 0.75 above 500 m, 0.5
-    # between 500-1800 and 0 below 	1800m (suggestions of values from Clive
+    # between 500-1800 and 0 below 1800m (suggestions of values from Clive
     # Trueman based on stable isotope work, and proportion of biomass, 	Rockall 
     # Trough studies) (pref.ben)
     param$pref_benthos <- 0.8*exp(-1/250*param$depth)
@@ -99,9 +99,7 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
   
   # discretisation of year(delta.t)
   param$timesteps_years <- dbpm_inputs |> 
-    group_by(year) |> 
-    count() |> 
-    ungroup() |> 
+    count(year) |> 
     summarise(ts = 1/mean(n)) |> 
     pull(ts)
   
@@ -122,9 +120,8 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
   param$min_fishing_size_detritivore <- fishing_params$fminx_v 
   
   # Benthic-pelagic coupling parameters
-  
   # originally 640, but if 64 then using Quest-fish default of 64 hourly rate
-  # volume searched constant m3.yr-1 for fish. need to check this value, its
+  # volume searched constant m3.yr-1 for fish. need to check this value, it's
   # quite large. (A.u)
   param$hr_volume_search <- fishing_params$search_vol
   
@@ -280,7 +277,6 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
     param$init_detritus <- 0.00001
   }
   
-  
   param$equilibrium <- equilibrium
   
   return(param)
@@ -294,7 +290,7 @@ phi_f <- function(q, log10_pred_prey_ratio, log_prey_pref){
                 exp(-(q-log10_pred_prey_ratio)*(q-log10_pred_prey_ratio)/
                       (2*log_prey_pref*log_prey_pref))/
                   (log_prey_pref*sqrt(2.0*pi)),
-                0) 
+                0)
   return(phi)
 }
 
@@ -316,7 +312,6 @@ mphi_f <- function(rev_pred_prey_matrix, log10_pred_prey_ratio, log_prey_pref,
 expax_f <- function(log10_size_bins, metabolic_req_pred){
   return(10^(metabolic_req_pred*log10_size_bins)) 
 }
-
 
 # Gravity model -----
 gravitymodel <- function(effort, prop_b, depth, iter){
@@ -341,7 +336,6 @@ gravitymodel <- function(effort, prop_b, depth, iter){
   return(eff)
 }
 
-  
 # Run model per grid cell or averaged over an area ------
 sizemodel <- function(params, temp_effect = T, use_init = F, trunc_size = TRUE,
                       benthic_habitat_depth = 20, detritus_input = NULL, 
