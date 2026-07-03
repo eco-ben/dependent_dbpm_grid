@@ -695,18 +695,30 @@ sizemodel <- function(params, temp_effect = T, use_init = F, trunc_size = TRUE,
         
       # get burial rate from Dunne et al. 2007 equation 3
       burial <- input_w*(0.013+0.53*input_w^2/(7+input_w)^2)
-      output_w <- output_w+burial
-      
-      # add remineralisation (Julia to provide more details - equation similar
-      # to burial. 20% of outputs get removed from system)
-      
-      # losses from detritivory + burial rate (not including remineralisation
-      # bc that goes to p.p. after sediment, we are using realised p.p. as
-      # inputs to the model) 
-      dW <- input_w-output_w
-        
-      #biomass density of detritus g.m-2
-      detritus[i+1] <- detritus[i]+dW*timesteps_years
+
+      # Detritus update: SEMI-IMPLICIT (exponential) instead of explicit Euler.
+      # `output_w` (above) is detritivore scavenging, which is LINEAR in the pool
+      # (feed_rate_det ~ detritus[i]), i.e. output_w = k_scav * detritus[i]. input_w and
+      # burial do NOT depend on the pool, so detritus obeys the linear ODE
+      #     dW/dt = (input_w - burial) - k_scav * W ,
+      # whose exact one-step solution
+      #     W(t+dt) = W* + (W0 - W*) * exp(-k_scav*dt),   W* = (input_w - burial)/k_scav ,
+      # is UNCONDITIONALLY STABLE and provably non-negative (a convex combination of
+      # W0 >= 0 and W* >= 0), with the SAME equilibrium as before. The old explicit step
+      #     detritus[i+1] <- detritus[i] + (input_w - output_w - burial)*timesteps_years
+      # overshoots to NEGATIVE when k_scav*dt > 1 (fast detritivory in warm/productive
+      # LMEs at a weekly step); a negative pool then feeds back through feed_rate_det and
+      # NaNs the run. This removes that crash without changing the steady state.
+      k_scav <- if (detritus[i] > 0) output_w/detritus[i] else 0    # scavenging loss rate (yr-1)
+      net_in <- input_w - burial                                   # pool-independent net input
+      # (add any remineralisation loss here - another pool-independent term in net_in)
+      if (k_scav > 0) {
+        Wstar <- net_in/k_scav
+        detritus[i+1] <- Wstar + (detritus[i] - Wstar)*exp(-k_scav*timesteps_years)
+      } else {
+        detritus[i+1] <- detritus[i] + net_in*timesteps_years      # k_scav -> 0 limit
+      }
+      detritus[i+1] <- max(detritus[i+1], 0)                       # guard against residual negatives
 
       # Pelagic Predator Density (nos.m-2)- solve for time + timesteps_years 
       # using implicit time Euler upwind finite difference (help from Ken 
