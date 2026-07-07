@@ -1751,7 +1751,7 @@ def detritus_rk4_step(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
 
 # Run model per grid cell or averaged over an area ------
 def gridded_sizemodel_rk4(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs, 
-                          dbpm_dynamic_inputs, region, model_res, out_folder, 
+                          dbpm_dynamic_inputs, transition, region, model_res, out_folder, 
                           weekly = False, force_finite = True, rk4_substeps = 4,
                           benthic_habitat_depth = 20, **kwargs):
     """
@@ -1765,6 +1765,9 @@ def gridded_sizemodel_rk4(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
     values for predators, detritivores and detritus
     - dbpm_dynamic_inputs (xarray Dataset) Contains dynamic gridded inputs need to run
     DBPM
+    - transition (xarray Dataset) Contains transition probabilities between all pairs
+    of grid cells for the modelled domain. Must contain dimensions not only for cell
+    indices, but also for cell longitude and latitude values.
     - region (character) Name of region being processed (as included in folder and file
     names)
     - model_res (character) Spatial resolution of DBPM inputs (as included in folder
@@ -1896,7 +1899,7 @@ def gridded_sizemodel_rk4(gridded_params, dbpm_fixed_inputs, dbpm_init_inputs,
 
     predators = tot_biomass_calc(gridded_params, dbpm_fixed_inputs, 
                                  'predators', dbpm_init_inputs['predators'], pred_next, 
-                                 pred_density, reprod_rate = reprod_pred['R_u'],
+                                 pred_density, transition, reprod_rate = reprod_pred['R_u'],
                                  growth_rate = growth_rates_pred_det['GG_u'], 
                                  total_mortality = mortality_pred['Z_u']).load()
     
