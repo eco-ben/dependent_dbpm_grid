@@ -82,11 +82,68 @@ ss_catches_summ <- ss_catches |>
             max_fished_weight_class = max(log10mid_wt, na.rm = T), 
             .groups = "drop") |> 
   mutate(region = case_when(area < 100 ~ paste0("LME ", area),
-                            .default = paste0("FAO ", area)), .after = year) |> 
-  rename(region_name = corrected_name) 
+                            .default = paste0("FAO ", area)), .after = year) |>
+  rename(region_name = corrected_name)
+
+# Per-SPECTRUM (U pelagic / V benthic) fished-size window --------------------
+# Reg's size_spectrum_catches file is fish-only and taxon-less, so the min/max above
+# collapse ALL taxa into ONE window and miss krill/invertebrates. For DBPM's two-spectrum
+# fishery we derive a per-spectrum window from the FGroup catch (catch_histsoc, already used
+# above), mapping each FGroup to a gram size range and to U vs V:
+#   fish FGroups: W = 0.01 * L^3 (g), L = cm size-class bounds
+#     <30cm -> L[4,30]  30-90cm -> L[30,90]  >=90cm -> L[90,200]  <90cm -> L[4,90]
+#   inverts (fixed): krill[1,2] shrimp[3,60] lobsterscrab[100,4000] cephalopods[20,6000]
+#     demersalmollusc[2,500]
+#   U = all fish + krill + cephalopods (water-column predators, incl. demersal fish)
+#   V = shrimp, lobsterscrab, demersalmollusc (benthos)
+# Each FGroup maps to a gram size RANGE [lo,hi]: fish W=0.01*L^3 with the cm-class bounds, where
+# the smallest classes' LOWER bound is the realistic minimum FISHED length 10 cm (~10 g, e.g.
+# anchovy/sardine gear onset), NOT 4 cm (larvae). Window = [min lo, max hi] over FGroups holding
+# >=0.5% of that spectrum-year-region catch (drops trace bycatch). min = lower edge = smallest
+# fished size (region-specific: small-pelagic LMEs ~10 g, toothfish LMEs stay high, krill 1 g).
+# NA where a spectrum was not fished that year. (U max later overridden by the real WtMax below.)
+V_groups <- c("shrimp", "lobsterscrab", "demersalmollusc")
+uv_summ <- file.path(fishing_folder, "DKRZ_EffortFiles",
+                     "catch_histsoc_1869_2017_EEZ_addFAO.csv") |>
+  read_csv_arrow(col_select = c("Year", "fao_area", "LME",
+                                "Reported", "IUU", "FGroup")) |>
+  clean_names() |>
+  mutate(area  = case_when(lme == 0 ~ fao_area + 100, .default = lme),
+         catch = reported + iuu,
+         lo = case_when(fgroup == "krill" ~ 1, fgroup == "shrimp" ~ 5,     # shrimp 5 g, krill 1 g
+                        fgroup == "lobsterscrab" ~ 100, fgroup == "cephalopods" ~ 20,
+                        fgroup == "demersalmollusc" ~ 10,                    # krill 1 g = fine mesh
+                        str_detect(fgroup, "<30cm")   ~ 0.01 * 5^3,    # 5 cm ~ 1.25 g (graded pelagics)
+                        str_detect(fgroup, "30-90cm") ~ 0.01 * 30^3,
+                        str_detect(fgroup, ">=90cm")  ~ 0.01 * 90^3,
+                        str_detect(fgroup, "<90cm")   ~ 0.01 * 10^3, .default = NA_real_),
+         hi = case_when(fgroup == "krill" ~ 2, fgroup == "shrimp" ~ 60,
+                        fgroup == "lobsterscrab" ~ 4000, fgroup == "cephalopods" ~ 6000,
+                        fgroup == "demersalmollusc" ~ 500,
+                        str_detect(fgroup, "<30cm")   ~ 0.01 * 30^3,
+                        str_detect(fgroup, "30-90cm") ~ 0.01 * 90^3,
+                        str_detect(fgroup, ">=90cm")  ~ 0.01 * 200^3,
+                        str_detect(fgroup, "<90cm")   ~ 0.01 * 90^3, .default = NA_real_),
+         spectrum = if_else(fgroup %in% V_groups, "V", "U")) |>
+  filter(catch > 0, !is.na(lo)) |>
+  group_by(area, year, spectrum) |>
+  mutate(frac = catch / sum(catch)) |>
+  filter(frac >= 0.005) |>
+  summarise(mn = log10(min(lo)), mx = log10(max(hi)), .groups = "drop") |>   # lower/upper edges
+  select(area, year, spectrum, mn, mx) |>
+  pivot_wider(names_from = spectrum, values_from = c(mn, mx)) |>
+  rename(min_fished_U = mn_U, max_fished_U = mx_U,
+         min_fished_V = mn_V, max_fished_V = mx_V)
+
+ss_catches_summ <- ss_catches_summ |>
+  left_join(uv_summ, by = c("area" = "area", "year" = "year")) |>
+  # HYBRID max: the pelagic U max uses Reg's real (WtMax-based) max_fished_weight_class rather
+  # than the coarse FGroup cm-class max; the benthic V max keeps the invert-group max (the
+  # fish-dominated max_fished_weight_class over-extends benthos). min (U,V) stays FGroup-derived.
+  mutate(max_fished_U = max_fished_weight_class)
 
 # Saving summarised data
-ss_catches_summ |> 
+ss_catches_summ |>
   write_csv_arrow(file.path(fishing_folder, "effort_catch_data", 
                             "summary_size_spectrum_catches_fao-lme.csv"))
 
