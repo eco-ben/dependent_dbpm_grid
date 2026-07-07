@@ -3,7 +3,7 @@
 # Functions have been adapted from previous DBPM work by JLB, CN, JB and others
 # 
 # Edited by: Denisse Fierro Arcos
-# Date of update: 2024-03-26
+# Date of last update: 2026-07-02
 #
 # Choose local R library - Activate when using R 4.5 
 # .libPaths("/g/data/vf71/la6889/R_personal_lib/")
@@ -98,10 +98,7 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
   param$n_years <- length(unique(dbpm_inputs$year))
   
   # discretisation of year(delta.t)
-  param$timesteps_years <- dbpm_inputs |> 
-    count(year) |> 
-    summarise(ts = 1/mean(n)) |> 
-    pull(ts)
+  param$timesteps_years <- 1/mean(table(dbpm_inputs$year))
   
   # number of time bins (Neq)
   param$numb_time_steps <- nrow(dbpm_inputs)
@@ -227,12 +224,14 @@ sizeparam <- function(dbpm_inputs, fishing_params, dx = 0.1, xmin = -12,
   param$numb_size_bins <- length(param$log10_size_bins)
   
   # index for minimum log10 predator size (ref)
-  param$ind_min_pred_size <-
-    which(param$log10_size_bins == param$min_log10_pred)
+  param$ind_min_pred_size <- 
+    ((param$min_log10_pred - param$min_log10_plankton)/
+       param$log_size_increase)+1
   
   # index for minimum log10 detritivore size (ref.det)
   param$ind_min_detritivore_size <- 
-    which(param$log10_size_bins == param$min_log10_detritivore)
+    ((param$min_log10_detritivore - param$min_log10_plankton)/
+       param$log_size_increase)+1
   
   # index in F vector corresponding to smallest size fished in U (Fref.u)
   param$ind_min_fish_pred <- ((param$min_fishing_size_pred-
@@ -336,11 +335,238 @@ gravitymodel <- function(effort, prop_b, depth, iter){
   return(eff)
 }
 
+# Feeding and satiation rates -----
+feeding_satiation_rates <- function(params, tempeffect, init_bio, 
+                                    constant_growth = NULL, 
+                                    group = "detritus"){
+  # - params (list) - Model parameters produced by the "sizeparam" function
+  # - tempeffect (numeric) - Temperature effects calculated by the "sizemodel"
+  #   function
+  # - init_bio (numeric). Initial biomass to calculate feeding and satiation
+  #   rates
+  # - constant_growth (matrix). Lookup table for term in the integrals which
+  #   remain constant over time (gphi). This is only required if "group" is NOT
+  #   set to "detritus"
+  # - group (character). Choice between "predators", "detritivores" and
+  #   "detritus". Note that satiation rates are NOT calculated when "detritus"
+  #   is chosen
+  
+  with(params, {
+    size_bins_vals <- 10^log10_size_bins
+    if(group == "detritus"){
+      detritus_multiplier <- (1/size_bins_vals)*hr_vol_filter_benthos*
+        10^(log10_size_bins*metabolic_req_detritivore)*init_bio
+      
+      feed_rate_det <- tempeffect*(detritus_multiplier)/
+        (1+handling*detritus_multiplier)
+      
+      return(feed_rate_det)
+      
+    }else if(group == "predators"){
+      if(is.null(constant_growth)){
+        stop(paste0("'constant_growth' must be provided to calculate ", 
+                    "predator feeding rate"))
+      }
+      #To be applied to feeding rates for pelagics and benthic groups
+      feed_mult_pel <- (hr_volume_search*
+                          10^(log10_size_bins*metabolic_req_pred)*pref_pelagic)
+    
+      # feeding rates yr-1 (f_pel)
+      pred_growth <- 
+        (init_bio*log_size_increase*log(10))%*%(constant_growth)
+      
+      feed_rate_pel <- tempeffect*as.vector(
+        (feed_mult_pel*pred_growth)/(1+handling*feed_mult_pel*pred_growth)) 
+      
+      # Satiation level of predator for pelagic prey (sat.pel)
+      sat_pel <- ifelse(feed_rate_pel > 0,
+                        feed_rate_pel/(feed_mult_pel*pred_growth),
+                        0)
+      
+      #Create dataset with feeding and satiation outputs for predators
+      return(list("f_pel" = feed_rate_pel, "sat_pel" = sat_pel))
+      
+    }else if(group == "detritivores"){
+      if(is.null(constant_growth)){
+        stop(paste0("'constant_growth' must be provided to calculate ", 
+                    "detritivore feeding rate"))
+      }
+      #To be applied to feeding rates for benthic group
+      feed_mult_ben <- (hr_volume_search*
+                          10^(log10_size_bins*metabolic_req_pred)*pref_benthos)
+      
+      # Detritivores (f_ben)
+      detrit_growth <- 
+        (init_bio*log_size_increase*log(10))%*%(constant_growth)
+      
+      feed_rate_bent <- tempeffect* 
+        as.vector((feed_mult_ben*detrit_growth)/ 
+                    (1+handling*feed_mult_ben*detrit_growth))
+      
+      # Satiation level of predator for benthic prey
+      sat_ben <- ifelse(feed_rate_bent > 0,
+                        feed_rate_bent/
+                          ((hr_volume_search*
+                              10^(log10_size_bins*metabolic_req_detritivore)*
+                              pref_benthos)*detrit_growth),
+                        0)
+      
+      #Create dataset with feeding and satiation outputs for detritivores
+      return(list("f_ben" = feed_rate_bent, "sat_ben" = sat_ben))
+    }
+  })
+}
+
+# Output_w  ------
+detritus_output <- function(params, feed_rate_det, detritivores){
+  # - params (list) - Model parameters produced by the "sizeparam" function
+  # - feed_rate_det (numeric) - Detritus feeding rate by detritivores 
+  #   calculated by the "feeding_satiation_rates" function
+  # - detritivores (numeric) - Detritivore biomass to start output_w 
+  #   calculations
+  with(params,{
+    output_w <- sum((10^log10_size_bins)*feed_rate_det*detritivores*
+                      log_size_increase)
+    return(output_w)
+  })
+}
+
+# Defecation by predators ------
+defecation_predators <- function(params, feed_rate, predators){
+  # - params (list) - Model parameters produced by the "sizeparam" function
+  # - feed_rate (list) - Feeding rate by detritivores and predators calculated 
+  #   by the "feeding_satiation_rates" function
+  # - predators (numeric) - Predator biomass to start defecation calculations
+  with(params, {
+    defbypred <- defecate_prop*(feed_rate$f_pel)*(10^log10_size_bins)*
+      predators+def_low*(feed_rate$f_ben)*(10^log10_size_bins)*predators
+    return(defbypred)
+  })
+}
+
+# Detritus pool -----------------------------------------------------------
+detritus_pool <- function(params, bio_inputs, senes_mort, other_mort, 
+                          defbypred, output_w, sinking_rate_index, 
+                          detritus_input = NULL){
+  # - params (list) - Model parameters produced by the "sizeparam" function
+  # - bio_inputs (list) - Predator and detritivore biomass to start detritus 
+  #   pool calculations
+  # - senes_mort (list) - Feeding rate by detritivores and predators calculated 
+  #   by the "feeding_satiation_rates" function
+  
+  with(params,{
+    size_bins_vals <- 10^log10_size_bins
+    # considering pelagic faeces as input as well as dead bodies from both 
+    # pelagic and benthic communities and phytodetritus (dying sinking
+    # phytoplankton)
+    # Temperature effects removed from senescense and other mortality when 
+    # calculating detritus after discussion with Julia on 2026-06-23
+    if(is.null(detritus_input)){
+      if(detritus_coupling){
+        # pelagic spectrum inputs (sinking dead bodies and faeces) - export 
+        # ratio used for "sinking rate" + benthic spectrum inputs (dead stuff
+        # already on/in seafloor)
+        input_w <- (sinking_rate[sinking_rate_index]* 
+                      (sum(defbypred[ind_min_pred_size:numb_size_bins]*
+                             log_size_increase)+
+                         sum(other_mort$pred*bio_inputs$predators*
+                               size_bins_vals*log_size_increase)+
+                         sum(senes_mort$pred*bio_inputs$predators*
+                               size_bins_vals*log_size_increase))+
+                      (sum(other_mort$det*bio_inputs$detritivores*
+                             size_bins_vals*log_size_increase)+
+                         sum(senes_mort$det*bio_inputs$detritivores*
+                               size_bins_vals*log_size_increase)))
+      }else{
+        input_w <- sum(other_mort$det*bio_inputs$detritivores*
+                         size_bins_vals*log_size_increase)+
+          sum(senes_mort$det*bio_inputs$detritivores*size_bins_vals*
+                log_size_increase)
+      }}else{
+        input_w <- detritus_input
+      }
+    
+    # get burial rate from Dunne et al. 2007 equation 3
+    burial <- input_w*(0.013+0.53*input_w^2/(7+input_w)^2)
+    output_w <- output_w+burial
+    
+    # add remineralisation (Julia to provide more details - equation similar
+    # to burial. 20% of outputs get removed from system)
+    
+    # losses from detritivory + burial rate (not including remineralisation
+    # bc that goes to p.p. after sediment, we are using realised p.p. as
+    # inputs to the model) 
+    dW <- input_w-output_w
+    
+    return(list("input_w" = input_w, "dW" = dW))
+  })
+}
+
+# Detritus calculation - Runge-Kutta method -------------------------------
+detritus_rk4_step <- function(params, dbpm_init_inputs, detritus_current, h, 
+                              temp_effect, senes_mort, other_mort, 
+                              sinking_rate_index, constant_growth, ...){
+  #Single RK4 step for detritus calculation
+  #Parameters:
+  #- h: timestep size (gridded_params['timesteps_years'])
+  #- detritus_current: current detritus values
+  
+  calculate_dW_dt <- function(detritus_state, t_fraction = 0, ...){
+    # Calculate dW/dt for given detritus state
+    # Create temporary inputs with updated detritus
+    temp_inputs <- dbpm_init_inputs
+    temp_inputs$detritus <- detritus_state
+    
+    # Recalculate feeding rates with updated detritus
+    feed_detritus <- feeding_satiation_rates(params, temp_effect$det,
+                                             temp_inputs$detritus,
+                                             group = "detritus")
+    
+    # Calculate outputs and defecation (these depend on current biomass)
+    output_w <- detritus_output(params, feed_detritus,
+                                temp_inputs$detritivores)
+    
+    feed_sat_pred <- feeding_satiation_rates(params, temp_effect$pred,
+                                             temp_inputs$predators,
+                                             constant_growth,
+                                             group = "predators")
+    
+    feed_sat_det <- feeding_satiation_rates(params, temp_effect$pred,
+                                            temp_inputs$detritivores,
+                                            constant_growth,
+                                            group = "detritivores")
+    
+    defbypred <- defecation_predators(params,
+                                      list("f_pel" = feed_sat_pred$f_pel,
+                                           "f_ben" = feed_sat_det$f_ben),
+                                      temp_inputs$predators)
+    
+    # Calculate detritus pool changes
+    det_pool <- detritus_pool(params, temp_inputs, senes_mort, other_mort, 
+                              defbypred, output_w, sinking_rate_index, ...)
+    
+    return(det_pool$dW)
+  }
+  # RK4 implementation
+  k1 <- calculate_dW_dt(detritus_current)
+  k2 <- calculate_dW_dt(detritus_current + h * k1 / 2)
+  k3 <- calculate_dW_dt(detritus_current + h * k2 / 2)
+  k4 <- calculate_dW_dt(detritus_current + h * k3)
+  
+  # Combine the slopes
+  detritus_next <- detritus_current + h * (k1 + 2*k2 + 2*k3 + k4) / 6
+  
+  return(detritus_next)
+}
+
+
+
 # Run model per grid cell or averaged over an area ------
 sizemodel <- function(params, temp_effect = T, use_init = F, trunc_size = TRUE,
                       benthic_habitat_depth = 20, detritus_input = NULL, 
-                      set_plankton = FALSE){
+                      set_plankton = FALSE, rk4_substeps = 4){
   with(params,{
+    # - params (list) - Model parameters produced by the "sizeparam" function
     # - trunc_size (boolean) - Default is TRUE, which means that the size range
     # for detritivores and predators during initialisation is truncated to size
     # bin 120. Setting to FALSE does NOT truncate size range to size bin 120 for 
@@ -548,13 +774,6 @@ sizemodel <- function(params, temp_effect = T, use_init = F, trunc_size = TRUE,
       ben_tempeffect <- 1
     }
     
-    #To be applied to feeding rates for pelagics and benthic groups
-    feed_mult_pel <- (hr_volume_search*
-                        10^(log10_size_bins*metabolic_req_pred)*pref_pelagic)
-    
-    feed_mult_ben <- (hr_volume_search*
-                        10^(log10_size_bins*metabolic_req_pred)*pref_benthos)
-    
     #Ingested food
     growth_prop <- 1-defecate_prop
     
@@ -564,25 +783,32 @@ sizemodel <- function(params, temp_effect = T, use_init = F, trunc_size = TRUE,
     #iteration over time, N [days]
     for(i in 1:numb_time_steps){
       # Calculate Growth and Mortality
-      # feeding rates yr-1 (f_pel)
-      pred_growth <- (predators[,i]*log_size_increase*log(10))%*%(constant_growth)
+      feed_sat_pred <- feeding_satiation_rates(params, pel_tempeffect[i], 
+                                               predators[, i],
+                                               constant_growth, 
+                                               group = "predators")
       
-      feed_rate_pel <- pel_tempeffect[i]*as.vector(
-        (feed_mult_pel*pred_growth)/(1+handling*feed_mult_pel*pred_growth)) 
+      # Feeding rate of predator for pelagic prey
+      feed_rate_pel <- feed_sat_pred$f_pel
+      
+      # Satiation level of predator for pelagic prey
+      sat_pel <- feed_sat_pred$sat_pel
       
       # yr-1 (f_ben)
-      detrit_growth <- (detritivores[,i]*log_size_increase*log(10))%*%(constant_growth)
+      feed_sat_det <- feeding_satiation_rates(params, pel_tempeffect[i], 
+                                              detritivores[, i], 
+                                              constant_growth,
+                                              group = "detritivores")
       
-      feed_rate_bent <- pel_tempeffect[i]* 
-        as.vector((feed_mult_ben*detrit_growth)/ 
-                    (1+handling*feed_mult_ben*detrit_growth))
+      # Feeding rate of predator for benthic prey 
+      feed_rate_bent <- feed_sat_det$f_ben
+      
+      # Satiation level of predator for benthic prey 
+      sat_ben <- feed_sat_det$sat_ben
       
       # yr-1 (f_det)
-      detritus_multiplier <- (1/size_bins_vals)*hr_vol_filter_benthos*
-        10^(log10_size_bins*metabolic_req_detritivore)*detritus[i]
-      
-      feed_rate_det <- ben_tempeffect[i]*(detritus_multiplier)/
-        (1+handling*detritus_multiplier)
+      feed_rate_det <- feeding_satiation_rates(params, ben_tempeffect[i],
+                                               detritus[i], group = "detritus")
       
       # Predator growth integral (GG_u) yr-1 
       growth_int_pred[, i] <- growth_prop*growth_pred*
@@ -595,11 +821,6 @@ sizemodel <- function(params, temp_effect = T, use_init = F, trunc_size = TRUE,
           (1-(growth_detritivore+energy_detritivore))*feed_rate_bent
       }
       
-      # Predator death integrals 
-      #Satiation level of predator for pelagic prey
-      sat_pel <- ifelse(feed_rate_pel > 0,
-                        feed_rate_pel/(feed_mult_pel*pred_growth),
-                        0)
       # yr-1 (PM_u)
       pred_mort_pred[, i] <- as.vector(
         (pref_pelagic*hr_volume_search*met_req_log10_size_bins)*
@@ -621,14 +842,7 @@ sizemodel <- function(params, temp_effect = T, use_init = F, trunc_size = TRUE,
       }
       
       # Benthos death integral
-      #Satiation level of predator for benthic prey 
-      sat_ben <- ifelse(feed_rate_bent > 0,
-                        feed_rate_bent/
-                          ((hr_volume_search*
-                              10^(log10_size_bins*metabolic_req_detritivore)*
-                              pref_benthos)* 
-                             detrit_growth),
-                        0)
+      
       # yr-1 (PM_v)
       pred_mort_det[, i] <- ifelse(sat_ben > 0,
                                    as.vector(
@@ -643,65 +857,31 @@ sizemodel <- function(params, temp_effect = T, use_init = F, trunc_size = TRUE,
       tot_mort_det[, i] <- pred_mort_det[, i]+
         ben_tempeffect[i]*other_mort_det+senes_mort_det+fishing_mort_det[, i]
       
-      #detritus output (g.m-2.yr-1)
-      # losses from detritivore scavenging/filtering only:
-      output_w <- sum(size_bins_vals*feed_rate_det*detritivores[, i]*
-                        log_size_increase)   
-      
-      #total biomass density defecated by pred (g.m-2.yr-1)
-      defbypred <- defecate_prop*(feed_rate_pel)*size_bins_vals*
-        predators[, i]+def_low*(feed_rate_bent)*size_bins_vals*predators[, i]
-      
       # Increment values of detritus, predators & detritivores for next 
       # timestep  
       
       #Detritus Biomass Density Pool - fluxes in and out (g.m-2.yr-1) of 
       #detritus pool and solve for detritus biomass density in next time step 
-
-      # considering pelagic faeces as input as well as dead bodies from both 
-      # pelagic and benthic communities and phytodetritus (dying sinking
-      # phytoplankton)
-      # Temperature effects removed from senescense and other mortality when 
-      # calculating detritus after discussion with Julia on 2026-06-23
-      if(is.null(detritus_input)){
-        if(detritus_coupling){
-          # pelagic spectrum inputs (sinking dead bodies and faeces) - export 
-          # ratio used for "sinking rate" + benthic spectrum inputs (dead stuff
-          # already on/in seafloor)
-          input_w <- (sinking_rate[i]* 
-                        (sum(defbypred[ind_min_pred_size:numb_size_bins]*
-                               log_size_increase)+
-                           sum(other_mort_pred*predators[, i]*size_bins_vals*
-                                 log_size_increase)+
-                           sum(senes_mort_pred*predators[, i]*size_bins_vals*
-                                 log_size_increase))+
-                        (sum(other_mort_det*detritivores[, i]*size_bins_vals*
-                               log_size_increase)+
-                           sum(senes_mort_det*detritivores[, i]*size_bins_vals*
-                                 log_size_increase)))
-        }else{
-          input_w <- sum(other_mort_det*detritivores[, i]*size_bins_vals*
-                           log_size_increase)+
-            sum(senes_mort_det*detritivores[, i]*size_bins_vals*log_size_increase)
-        }}else{
-          input_w <- detritus_input[i]
-        }
-        
-      # get burial rate from Dunne et al. 2007 equation 3
-      burial <- input_w*(0.013+0.53*input_w^2/(7+input_w)^2)
-      output_w <- output_w+burial
+      # Calculate detritus pool changes
+      # Replace the simple Euler detritus calculation with RK4
+      h <- timesteps_years / rk4_substeps 
       
-      # add remineralisation (Julia to provide more details - equation similar
-      # to burial. 20% of outputs get removed from system)
-      
-      # losses from detritivory + burial rate (not including remineralisation
-      # bc that goes to p.p. after sediment, we are using realised p.p. as
-      # inputs to the model) 
-      dW <- input_w-output_w
-        
+      for(substep in 1:rk4_substeps){
+        detritus_next <-  detritus_rk4_step(
+          params = params, 
+          dbpm_init_inputs = list("predators" = predators[, i],
+                                  "detritivores" = detritivores[, i]),
+          detritus_current = detritus[i], h, 
+          temp_effect = list("det" = ben_tempeffect[i], 
+                             "pred" = pel_tempeffect[i]), 
+          senes_mort = list("det" = senes_mort_det, "pred" = senes_mort_pred),
+          other_mort = list("det" = other_mort_det, "pred" = other_mort_pred),
+          sinking_rate_index = i, constant_growth = constant_growth, 
+          detritus_input = detritus_input)
+      }
       #biomass density of detritus g.m-2
-      detritus[i+1] <- detritus[i]+dW*timesteps_years
-
+      detritus[i+1] <- max(detritus_next, 0)
+     
       # Pelagic Predator Density (nos.m-2)- solve for time + timesteps_years 
       # using implicit time Euler upwind finite difference (help from Ken 
       # Andersen and Richard Law)
@@ -1228,9 +1408,12 @@ dbpm_output_mat_to_df <- function(dbpm_outputs, dbpm_temporal_range,
     pred_var <- "growth_int_pred"
     det_var <- "growth_det"
   }
+  
+  # isave <- seq(from = 2, to = (length(dbpm_inputs$time)+1), 4)
+  isave <- seq(from = 2, to = (length(dbpm_inputs$time)+1), 10)
     
   # Prepare predator data
-  pred <- as.data.frame(dbpm_outputs[pred_var], row.names = size_bins)
+  pred <- as.data.frame(dbpm_outputs[pred_var], row.names = size_bins)[, isave]
   # Add timestamps
   colnames(pred) <- dbpm_temporal_range
   # Reorganise data
@@ -1239,7 +1422,7 @@ dbpm_output_mat_to_df <- function(dbpm_outputs, dbpm_temporal_range,
     pivot_longer(!size_class, names_to = "time", values_to = "predators")
   
   # Prepare detritivore data
-  detrit <- as.data.frame(dbpm_outputs[det_var], row.names = size_bins)
+  detrit <- as.data.frame(dbpm_outputs[det_var], row.names = size_bins)[, isave]
   # Add timestamps
   colnames(detrit) <- dbpm_temporal_range
   # Reorganise data
@@ -1253,7 +1436,7 @@ dbpm_output_mat_to_df <- function(dbpm_outputs, dbpm_temporal_range,
   
   if(output_var == "density"){
     # Prepare detritus data
-    detritus <- data.frame(detritus = dbpm_outputs[detritus_var],
+    detritus <- data.frame(detritus = dbpm_outputs[[detritus_var]][isave],
                            row.names = as.character(dbpm_temporal_range)) |> 
       rownames_to_column("time")
     bio_data <- bio_data |> 
