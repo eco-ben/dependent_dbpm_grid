@@ -1,24 +1,15 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 authors:
-- family-names: "Novaglio"
-  given-names: "Camilla"
-  orcid: "https://orcid.org/0000-0003-3681-1377"
-- family-names: "Blanchard"
-  given-names: "Julia"
-  orcid: "https://orcid.org/0000-0003-0532-4824"
-- family-names: "Heneghan"
-  given-names: "Ryan"
-  orcid: "https://orcid.org/0000-0001-7626-1248"
-- family-names: "Forestier"
-  given-names: "Romain"
 - family-names: "Fierro-Arcos"
   given-names: "Denisse"
   orcid: "https://orcid.org/0000-0002-5039-6272"
-- name: "Fisheries and Marine Ecosystem Model Intercomparison Project (Fish-MIP)"
+- family-names: "Blanchard"
+  given-names: "Julia"
+  orcid: "https://orcid.org/0000-0003-0532-4824"
 
 title: "Dynamic Benthic Pelagic Model (DBPM) calibration - ISIMIP3A protocol"
-version: 0.0.1
+version: 2.0.0
 doi: TBA
 date-released: TBA
 url: "https://github.com/Benthic-Pelagic-Size-Spectrum-Model/lme_scale_calibration_ISMIP3a"

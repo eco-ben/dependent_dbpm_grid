@@ -8,3 +8,4 @@ observed_LME_14.csv
 grid_results.RDS
 .DS_Store
 .ipynb_checkpoints
+**/__pycache__/
