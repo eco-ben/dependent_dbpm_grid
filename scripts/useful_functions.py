@@ -1069,7 +1069,7 @@ def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None, fishing = True
                                          'sea_ice_mask': simask})
 
     ds_dynamic = ds_dynamic.sortby('lat', ascending=False)
-    
+
     return ds_dynamic
 
 
@@ -1601,7 +1601,7 @@ def biomass_density(gridded_params, dbpm_fixed_inputs, growth_rate,
 
 
 def tot_biomass_calc(gridded_params, dbpm_fixed_inputs, group, biomass_current,
-                     biomass_next, biomass_density, reprod_rate = None, 
+                     biomass_next, biomass_density, transition, reprod_rate = None, 
                      growth_rate = None, total_mortality = None):
 
     if group == 'predators':
@@ -1630,16 +1630,37 @@ def tot_biomass_calc(gridded_params, dbpm_fixed_inputs, group, biomass_current,
             growth_rate = growth_rate.sel(size_class = ref_sc)
             total_mortality = total_mortality.sel(size_class = ref_sc)
         bio_ref = biomass_current.sel(size_class = ref_sc)
-        bio_ref_next = (bio_ref+
-                        ((reprod_rate*dbpm_fixed_inputs['size_bin_vals']*
-                          biomass_current*gridded_params['log_size_increase']).
-                         sum('size_class')*gridded_params['timesteps_years'])/
-                        (gridded_params['log_size_increase']*
-                         dbpm_fixed_inputs['size_bin_vals'].sel(size_class = ref_sc))-
-                        (gridded_params['timesteps_years']/
-                         gridded_params['log_size_increase'])*(1/np.log(10))*
-                        growth_rate*bio_ref-gridded_params['timesteps_years']*
-                        total_mortality*bio_ref)
+
+        # Calculate base reproductive input of the size spectrum into the ref size
+        # class for each grid cell
+        reprod_input = (
+            reprod_rate*dbpm_fixed_inputs['size_bin_vals']*
+            biomass_current*gridded_params['log_size_increase']
+        ).sum('size_class') * gridded_params['timesteps_years'] /(
+            gridded_params['log_size_increase']*
+            dbpm_fixed_inputs['size_bin_vals'].sel(size_class = ref_sc)
+        )
+
+        # Combine the reproductive inputs with the transition matrix
+        reprod_input_flat = reprod_input.stack(cell=('lat', 'lon'))
+        reprod_redist_values = reprod_input_flat.values @ transition.values
+        # Reformat into the same format as the original reproductive inputs
+        reprod_redist = reprod_input_flat.copy(data = reprod_redist_values).unstack('cell')
+
+        # Calculate the growth of egg/larval biomass out of the size class
+        growth_out = (
+            gridded_params['timesteps_years']/
+            gridded_params['log_size_increase']
+        ) * (1 / np.log(10)) * growth_rate * bio_ref
+
+        # Calculate the loss of ref sc biomass due to mortality
+        bio_ref_mort = gridded_params['timesteps_years'] * total_mortality * bio_ref
+
+        # ref sc biomass in next timestep is a function of previous biomass,
+        # new reproductive input from the spectrum, and losses due to growth out
+        # of the size class and mortality
+        bio_ref_next = bio_ref + reprod_redist - growth_out - bio_ref_mort
+
         # Change time stamp to next month
         if isinstance(biomass_next.time.values, np.ndarray):
             bio_ref_next['time'] = biomass_next.time.values
