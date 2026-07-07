@@ -1068,6 +1068,8 @@ def loading_dbpm_dynamic_inputs(gridded_folder, init_time = None, fishing = True
                                          'effort': effort,
                                          'sea_ice_mask': simask})
 
+    ds_dynamic = ds_dynamic.sortby('lat', ascending=False)
+    
     return ds_dynamic
 
 
